@@ -28,10 +28,10 @@ const TileViewer = () => {
       crossOriginPolicy: "Anonymous",
       tileSources: [
         {
-          type: "image" as const,
+          type: "image",
           url: imageUrl,
           buildPyramid: false,
-        },
+        } as any,
       ],
     });
 
