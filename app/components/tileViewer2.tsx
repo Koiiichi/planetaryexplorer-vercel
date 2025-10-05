@@ -61,7 +61,7 @@ const TileViewer = () => {
         tileSources.push({
           type: "image",
           url: dataset.urlPattern(row, col, clampedZoom),
-        });
+        } as any);
       }
     }
 
