@@ -3,7 +3,7 @@
 import { useSearchParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, Suspense } from "react";
 import GlassSearchBar from "./components/search_bar";
 
 // Dynamically import PhotoSphereGallery to avoid SSR issues with Three.js
@@ -12,7 +12,7 @@ const PhotoSphereGallery = dynamic(
   { ssr: false }
 );
 
-export default function SurprisePage() {
+function SurprisePageContent() {
   const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const searchParams = useSearchParams();
@@ -163,5 +163,13 @@ export default function SurprisePage() {
         <PhotoSphereGallery />
       </div>
     </div>
+  );
+}
+
+export default function SurprisePage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <SurprisePageContent />
+    </Suspense>
   );
 }
