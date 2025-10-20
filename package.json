@@ -18,7 +18,7 @@
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "three": "^0.180.0",
-    "togeojson": "^0.16.0"
+    "@mapbox/togeojson": "^0.16.2"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
