@@ -6,7 +6,11 @@
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "scan-emojis": "node scripts/scan-emojis.mjs",
+    "test-search": "cd backend && python test_search.py",
+    "test": "npm run scan-emojis && npm run test-search",
+    "pretest": "npm run scan-emojis"
   },
   "dependencies": {
     "@types/three": "^0.180.0",

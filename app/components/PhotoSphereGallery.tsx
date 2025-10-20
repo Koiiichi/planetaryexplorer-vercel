@@ -43,6 +43,46 @@ const DEFAULT_IMAGE_DATA: ImageData[] = [
   { image: 'https://picsum.photos/256/256?random=4', title: 'Ceres Dawn', keywords: ['fallback', 'ceres'], color: '#95E1D3' }
 ];
 
+// Enhanced thumbnail generation with fallback options
+const getPlanetaryThumbnail = (body: string, lat: number, lon: number, zoom: number = 3): string => {
+  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+  
+  // Try backend thumbnail endpoint first (with better caching and error handling)
+  if (backendUrl) {
+    const params = new URLSearchParams({
+      lat: lat.toString(),
+      lon: lon.toString(),
+      zoom: zoom.toString(),
+      size: '256'
+    });
+    return `${backendUrl}/thumbnail/${body.toLowerCase()}?${params.toString()}`;
+  }
+  
+  // Fallback to direct NASA TREK servers
+  const lonLatToTileXY = (lon: number, lat: number, z: number) => {
+    const cols = Math.max(1, Math.pow(2, z + 1));
+    const rows = Math.max(1, Math.pow(2, z));
+    let x = Math.floor(((lon + 180) / 360) * cols);
+    let y = Math.floor(((90 - lat) / 180) * rows);
+    x = ((x % cols) + cols) % cols;
+    y = Math.min(Math.max(y, 0), rows - 1);
+    return { x, y };
+  };
+
+  const { x, y } = lonLatToTileXY(lon, lat, zoom);
+  
+  switch (body.toLowerCase()) {
+    case 'moon':
+      return `https://trek.nasa.gov/tiles/Moon/EQ/LRO_WAC_Mosaic_Global_303ppd_v02/1.0.0/default/default028mm/${zoom}/${y}/${x}.jpg`;
+    case 'mars':
+      return `https://trek.nasa.gov/tiles/Mars/EQ/Mars_MGS_MOLA_ClrShade_merge_global_463m/1.0.0/default/default028mm/${zoom}/${y}/${x}.jpg`;
+    case 'mercury':
+      return `https://trek.nasa.gov/tiles/Mercury/EQ/Mercury_MESSENGER_MDIS_Basemap_EnhancedColor_Mosaic_Global_665m/1.0.0/default/default028mm/${zoom}/${y}/${x}.jpg`;
+    default:
+      return `https://picsum.photos/256/256?random=${Math.floor(Math.random() * 1000)}`;
+  }
+};
+
 export default function PhotoSphereGallery() {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -150,6 +190,33 @@ export default function PhotoSphereGallery() {
           return { x, y };
         }
 
+        // Function to load features from local JSON files  
+        async function loadLocalFeatures() {
+          const features: Record<string, Array<{ name: string; lat: number; lon: number }>> = {};
+          const bodies = ['moon', 'mars', 'mercury'];
+          
+          for (const body of bodies) {
+            try {
+              const response = await fetch(`/api/features/${body}`);
+              if (response.ok) {
+                const bodyFeatures = await response.json();
+                features[body] = bodyFeatures.slice(0, 200).map((f: any) => ({
+                  name: f.name,
+                  lat: f.lat,
+                  lon: f.lon
+                }));
+              } else {
+                console.warn(`Failed to load ${body} features from API`);
+                features[body] = [];
+              }
+            } catch (error) {
+              console.warn(`Error loading ${body} features:`, error);
+              features[body] = [];
+            }
+          }
+          return features;
+        }
+        
         const palette = ['#FFD700', '#FF6B6B', '#4ECDC4', '#95E1D3', '#F38181', '#AA96DA', '#FCBAD3', '#A8D8EA', '#FFE66D', '#C7CEEA'];
         const TILE_COUNT = 50;
 
@@ -173,19 +240,43 @@ export default function PhotoSphereGallery() {
 
         const planetFeatures: Record<string, Array<{ name: string; lat: number; lon: number }>> = {};
         
-        // Load features for all planets in parallel
-        await Promise.all(
-          Object.entries(planetKmzUrls).map(async ([planet, url]) => {
-            try {
-              const features = await fetchGazetteerKMZ(url);
-              planetFeatures[planet] = features;
-              console.log(`Loaded ${features.length} features for ${planet}`);
-            } catch (error) {
-              console.warn(`Failed to load features for ${planet}:`, error);
-              planetFeatures[planet] = [];
-            }
-          })
-        );
+        // Load features from local JSON files first, fallback to KMZ if needed
+        try {
+          const localFeatures = await loadLocalFeatures();
+          Object.assign(planetFeatures, localFeatures);
+          
+          // Log stats
+          const totalLoaded = Object.values(planetFeatures).reduce((sum, arr) => sum + arr.length, 0);
+          const sampleNames = Object.entries(planetFeatures)
+            .filter(([, feats]) => feats.length > 0)
+            .map(([body, feats]) => `${body}:${feats.slice(0, 3).map(f => f.name).join(',')}`)
+            .slice(0, 5);
+          
+          console.log(`Photosphere loader stats:`, {
+            totalRequested: Object.keys(planetFeatures).length,
+            totalLoaded,
+            failedCount: Object.values(planetFeatures).filter(arr => arr.length === 0).length,
+            sampleNames
+          });
+          
+          console.assert(totalLoaded >= 12, "Photosphere: expected at least 12 images loaded");
+        } catch (error) {
+          console.warn('Failed to load local features, falling back to KMZ:', error);
+          
+          // Fallback to KMZ loading
+          await Promise.all(
+            Object.entries(planetKmzUrls).map(async ([planet, url]) => {
+              try {
+                const features = await fetchGazetteerKMZ(url);
+                planetFeatures[planet] = features;
+                console.log(`Loaded ${features.length} features for ${planet}`);
+              } catch (error) {
+                console.warn(`Failed to load features for ${planet}:`, error);
+                planetFeatures[planet] = [];
+              }
+            })
+          );
+        }
 
         // Build images from features using the corresponding body layer configs
         const generated: ImageData[] = [];
@@ -214,9 +305,12 @@ export default function PhotoSphereGallery() {
             if (used.has(key)) continue;
             used.add(key);
 
-            const url = fillTemplate(config.tile_url_template, z, x, y);
+            // Use optimized thumbnail generation with retry logic
+            const thumbnailUrl = getPlanetaryThumbnail(bodyKey, f.lat, f.lon, z);
+            
+            console.log(`Generated thumbnail for ${f.name}: ${thumbnailUrl}`);
             generated.push({
-              image: url,
+              image: thumbnailUrl,
               title: `${f.name} — ${layer.title} (z${z})`,
               keywords: [bodyKey, layer.title, f.name],
               color: palette[generated.length % palette.length],
@@ -539,6 +633,49 @@ export default function PhotoSphereGallery() {
       camera.position.z = Math.max(10, Math.min(50, camera.position.z));
     };
 
+    // Google Earth style navigation function
+    const navigateToTarget = (targetData: { planet: string; lat: number; lon: number; zoom?: number; title?: string }) => {
+      const { planet, lat, lon, zoom = 10, title } = targetData;
+      
+      // Smooth fade out photosphere
+      const fadeOut = () => {
+        return new Promise<void>((resolve) => {
+          let opacity = 1;
+          const fadeStep = () => {
+            opacity -= 0.05;
+            if (container) {
+              container.style.opacity = opacity.toString();
+            }
+            
+            if (opacity <= 0) {
+              resolve();
+            } else {
+              requestAnimationFrame(fadeStep);
+            }
+          };
+          fadeStep();
+        });
+      };
+      
+      // Execute navigation
+      fadeOut().then(() => {
+        const params = new URLSearchParams({
+          body: planet,
+          lat: lat.toString(),
+          lon: lon.toString(),
+          zoom: zoom.toString()
+        });
+        
+        console.log('ui.flow', 'home_card_clicked', {
+          planet,
+          feature: title,
+          coordinates: [lat, lon]
+        });
+        
+        router.push(`/explorer?${params.toString()}`);
+      });
+    };
+
     const handleClick = (ev: MouseEvent) => {
       if (isFocused) {
         resetFocus();
@@ -559,14 +696,8 @@ export default function PhotoSphereGallery() {
           const { planet, lat, lon, zoom } = picked.userData;
           
           if (planet && lat !== undefined && lon !== undefined) {
-            // Navigate to explorer page with selected planet and coordinates
-            const params = new URLSearchParams({
-              body: planet,
-              lat: lat.toString(),
-              lon: lon.toString(),
-              zoom: zoom ? zoom.toString() : '10'
-            });
-            router.push(`/explorer?${params.toString()}`);
+            // Use Google Earth style navigation
+            navigateToTarget({ planet, lat, lon, zoom, title: picked.userData.title });
           } else {
             // Fallback for images without location data
             alert(`Viewing: ${picked.userData.title}`);

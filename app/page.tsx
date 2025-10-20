@@ -43,11 +43,9 @@ function SurprisePageContent() {
     setSelectedFilter(filter);
   };
 
-  /*************  ✨ Windsurf Command ⭐  *************/
   /**
    * Navigates back to the home page
    */
-  /*******  5e16d341-4f0a-4861-8fbe-418d8bc841bd  *******/
   const handleBackToHome = () => {
     router.push("/");
   };

@@ -166,7 +166,7 @@ def process_all_nomenclature(bodies_to_process: List[str] = None):
             
             # Parse features
             features = parse_kmz_to_features(kmz_data, body)
-            print(f"  ✓ Found {len(features)} features")
+            print(f"  Found {len(features)} features")
             
             # Save body-specific file
             body_output = output_dir / f"{body}_features.json"
@@ -176,7 +176,7 @@ def process_all_nomenclature(bodies_to_process: List[str] = None):
             all_features.extend(features)
             
         except Exception as e:
-            print(f"  ✗ Error processing {body}: {e}")
+            print(f"  Error processing {body}: {e}")
             continue
     
     if not all_features:
@@ -189,8 +189,8 @@ def process_all_nomenclature(bodies_to_process: List[str] = None):
         json.dump(all_features, f, indent=2, ensure_ascii=False)
     
     print(f"\n{'='*50}")
-    print(f"✓ Total features processed: {len(all_features)}")
-    print(f"✓ Saved to: {output_dir}")
+    print(f"Total features processed: {len(all_features)}")
+    print(f"Saved to: {output_dir}")
     
     # Print body breakdown
     print(f"\n{'Body':<15} {'Features':>10}")
