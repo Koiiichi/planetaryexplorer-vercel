@@ -4,8 +4,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import * as THREE from 'three';
 import JSZip from 'jszip';
-// @ts-ignore - togeojson doesn't have types
-import toGeoJSON from 'togeojson';
+// @ts-ignore - @mapbox/togeojson doesn't have types
+import toGeoJSON from '@mapbox/togeojson';
 
 type DatasetListItem = {
   id: string;
@@ -37,10 +37,10 @@ type ImageData = {
 };
 
 const DEFAULT_IMAGE_DATA: ImageData[] = [
-  { image: 'https://picsum.photos/256/256?random=1', title: 'Moonlit Plains', keywords: ['fallback', 'moon'], color: '#FFD700' },
-  { image: 'https://picsum.photos/256/256?random=2', title: 'Crater Valley', keywords: ['fallback', 'mars'], color: '#FF6B6B' },
-  { image: 'https://picsum.photos/256/256?random=3', title: 'Mercury Ridge', keywords: ['fallback', 'mercury'], color: '#4ECDC4' },
-  { image: 'https://picsum.photos/256/256?random=4', title: 'Ceres Dawn', keywords: ['fallback', 'ceres'], color: '#95E1D3' }
+  { image: 'https://trek.nasa.gov/tiles/Moon/EQ/LRO_WAC_Mosaic_Global_303ppd_v02/1.0.0/default/default028mm/4/8/8.jpg', title: 'Lunar Surface', keywords: ['fallback', 'moon'], color: '#FFD700' },
+  { image: 'https://trek.nasa.gov/tiles/Mars/EQ/Mars_MGS_MOLA_ClrShade_merge_global_463m/1.0.0/default/default028mm/4/8/8.jpg', title: 'Martian Terrain', keywords: ['fallback', 'mars'], color: '#FF6B6B' },
+  { image: 'https://trek.nasa.gov/tiles/Mercury/EQ/Mercury_MESSENGER_MDIS_Basemap_EnhancedColor_Mosaic_Global_665m/1.0.0/default/default028mm/4/8/8.jpg', title: 'Mercurian Surface', keywords: ['fallback', 'mercury'], color: '#4ECDC4' },
+  { image: 'https://trek.nasa.gov/tiles/Ceres/EQ/Ceres_Dawn_FC_HAMO_ClrShade_DLR_Global_60ppd_Oct2016/1.0.0/default/default028mm/4/8/8.jpg', title: 'Ceres Surface', keywords: ['fallback', 'ceres'], color: '#95E1D3' }
 ];
 
 export default function PhotoSphereGallery() {
@@ -61,8 +61,6 @@ export default function PhotoSphereGallery() {
     }
 
     let cancelled = false;
-    const palette = ['#FFD700', '#FF6B6B', '#4ECDC4', '#95E1D3', '#F38181', '#AA96DA', '#FCBAD3', '#A8D8EA', '#FFE66D', '#C7CEEA'];
-
     const fillTemplate = (template: string, z: number, x: number, y: number) =>
       template
         .replace(/{z}/g, String(z))
@@ -70,11 +68,6 @@ export default function PhotoSphereGallery() {
         .replace(/{y}/g, String(y))
         .replace(/{col}/g, String(x))
         .replace(/{row}/g, String(y));
-
-    const randomInt = (min: number, max: number) => {
-      if (min === max) return min;
-      return Math.floor(Math.random() * (max - min + 1)) + min;
-    };
 
     async function loadTiles() {
       try {
@@ -232,21 +225,55 @@ export default function PhotoSphereGallery() {
 
         // Process features from all planets with balanced distribution
         const planetLimits = {
-          'moon': 12,
-          'mars': 12, 
-          'mercury': 10,
+          'moon': 15,
+          'mars': 15, 
+          'mercury': 12,
           'ceres': 8,
           'vesta': 8
         };
         
         const planetsToProcess = ['moon', 'mars', 'mercury', 'ceres', 'vesta'];
+        let totalLoaded = 0;
+        const totalFailed = 0;
+        const sampleNames: string[] = [];
+        
         for (const planet of planetsToProcess) {
           if (generated.length >= TILE_COUNT) break;
           const features = planetFeatures[planet] || [];
           const maxForThisPlanet = planetLimits[planet as keyof typeof planetLimits] || 10;
           if (features.length > 0) {
+            const beforeCount = generated.length;
             pushFromFeatures(planet, features, maxForThisPlanet);
-            console.log(`Added ${Math.min(features.length, maxForThisPlanet)} images from ${planet} (${features.length} features available)`);
+            const added = generated.length - beforeCount;
+            totalLoaded += added;
+            if (added > 0) {
+              sampleNames.push(`${planet}: ${added} features`);
+            }
+            console.log(`Added ${added} images from ${planet} (${features.length} features available)`);
+          }
+        }
+        
+        // Log loading statistics
+        console.log(`Photosphere loading complete: {requested: ${TILE_COUNT}, loaded: ${totalLoaded}, failed: ${totalFailed}, sampleNames: [${sampleNames.join(', ')}]}`);
+        
+        // Ensure we have at least 12 images
+        if (totalLoaded < 12) {
+          console.warn(`Only loaded ${totalLoaded} images, expected at least 12. Adding fallback images.`);
+          // Add more fallback images to reach minimum
+          const fallbackNeeded = Math.max(0, 12 - totalLoaded);
+          for (let i = 0; i < fallbackNeeded && generated.length < TILE_COUNT; i++) {
+            const fallbackImages = [
+              'https://trek.nasa.gov/tiles/Moon/EQ/LRO_WAC_Mosaic_Global_303ppd_v02/1.0.0/default/default028mm/3/4/4.jpg',
+              'https://trek.nasa.gov/tiles/Moon/EQ/LRO_WAC_Mosaic_Global_303ppd_v02/1.0.0/default/default028mm/3/5/5.jpg',
+              'https://trek.nasa.gov/tiles/Mars/EQ/Mars_MGS_MOLA_ClrShade_merge_global_463m/1.0.0/default/default028mm/3/4/4.jpg',
+              'https://trek.nasa.gov/tiles/Mercury/EQ/Mercury_MESSENGER_MDIS_Basemap_EnhancedColor_Mosaic_Global_665m/1.0.0/default/default028mm/3/4/4.jpg'
+            ];
+            generated.push({
+              image: fallbackImages[i % fallbackImages.length],
+              title: `Planetary Surface ${i + 1}`,
+              keywords: ['fallback', 'planetary'],
+              color: palette[generated.length % palette.length],
+            });
           }
         }
 
@@ -671,7 +698,7 @@ export default function PhotoSphereGallery() {
         container.removeChild(renderer.domElement);
       }
     };
-  }, [imageData]);
+  }, [imageData, router]);
 
   return (
     <div className="relative w-full h-full">

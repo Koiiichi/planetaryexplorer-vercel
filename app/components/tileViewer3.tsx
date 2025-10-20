@@ -3,8 +3,8 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import JSZip from "jszip";
-// @ts-ignore - togeojson doesn't have types
-import toGeoJSON from "togeojson";
+// @ts-ignore - @mapbox/togeojson doesn't have types
+import toGeoJSON from "@mapbox/togeojson";
 import type { FeatureCollection, Point } from "geojson";
 
 type BodyKey =
@@ -288,8 +288,8 @@ export default function TileViewer({
   const [overlayOpacity, setOverlayOpacity] = useState<number>(0.5);
   const [viewMode, setViewMode] = useState<"single" | "split" | "overlay">("single");
   const [selectedDate, setSelectedDate] = useState<string>("");
-  const [compareDate, setCompareDate] = useState<string>(""); // For temporal comparison
-  const [temporalMode, setTemporalMode] = useState<"single" | "compare" | "animation">("single");
+  const [_compareDate, _setCompareDate] = useState<string>(""); // For temporal comparison
+  const [_temporalMode, _setTemporalMode] = useState<"single" | "compare" | "animation">("single");
   const [features, setFeatures] = useState<PlanetFeature[]>([]);
   const [searchText, setSearchText] = useState<string>(externalSearchQuery ?? "");
 
@@ -411,7 +411,7 @@ export default function TileViewer({
     })();
 
     return () => { mounted = false; };
-  }, [backendBase, selectedLayerId, selectedBody]);
+  }, [selectedLayerId, selectedBody]);
 
   // Load layer config (either from backend or from local TREK_TEMPLATES)
   useEffect(() => {
@@ -533,8 +533,7 @@ export default function TileViewer({
       console.log('[TileViewer3] No features for body:', selectedBody);
       // Features already cleared above
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedBody]);
+  }, [selectedBody, loadMoonGazetteer, queryMarsCraterDB, loadMercuryGazetteer, loadCeresGazetteer, loadVestaGazetteer]);
 
   // Keep openseadragon import in effect (client-only) - ONLY for backend-sourced configs
   useEffect(() => {
@@ -670,11 +669,11 @@ export default function TileViewer({
     const cleanup = () => {
       try {
         if (mainViewer) { mainViewer.destroy(); mainViewer = null; }
-      } catch (e) { // ignore
+      } catch (_e) { // ignore
       }
       try {
         if (compareViewer) { compareViewer.destroy(); compareViewer = null; }
-      } catch (e) { // ignore
+      } catch (_e) { // ignore
       }
       viewerObjRef.current = null;
       compareViewerObjRef.current = null;
@@ -740,8 +739,8 @@ export default function TileViewer({
             // if y outside range, return empty string (OS will skip)
             if (y < 0 || y >= maxTiles) return "";
 
-            let finalY = y;
-            let finalX = wrappedX;
+                let finalY = y;
+                const finalX = wrappedX;
             
             // Special handling for NASA GIBS (uses TMS coordinate system)
             if (template.includes('gibs.earthdata.nasa.gov')) {
@@ -769,9 +768,13 @@ export default function TileViewer({
           element: viewerRef.current,
           prefixUrl: "https://cdn.jsdelivr.net/npm/openseadragon@latest/build/openseadragon/images/",
           tileSources: [tileSource],
-          showNavigator: true,
-          navigatorSizeRatio: 0.18,
-          gestureSettingsMouse: { clickToZoom: false },
+          showNavigator: false, // Hide navigator for cleaner UI
+          showSequenceControl: false, // Hide sequence controls
+          showFullPageControl: false, // Hide full page control
+          showZoomControl: false, // Hide zoom controls
+          showHomeControl: false, // Hide home control
+          showRotationControl: false, // Hide rotation control
+          gestureSettingsMouse: { clickToZoom: true }, // Enable click to zoom
           constrainDuringPan: true,
           homeFillsViewer: true,
           visibilityRatio: 0.5,
@@ -823,7 +826,7 @@ export default function TileViewer({
                 if (y < 0 || y >= maxTiles) return "";
                 
                 let finalY = y;
-                let finalX = wrappedX;
+                const finalX = wrappedX;
                 
                 let url = compareTemplate.template;
                 if (compareTemplate.type === "temporal" && selectedDate) {
@@ -850,9 +853,13 @@ export default function TileViewer({
               element: compareViewerRef.current,
               prefixUrl: "https://cdn.jsdelivr.net/npm/openseadragon@latest/build/openseadragon/images/",
               tileSources: [compareTileSource],
-              showNavigator: viewMode === "split",
-              navigatorSizeRatio: 0.14,
-              gestureSettingsMouse: { clickToZoom: false },
+              showNavigator: false, // Hide navigator for cleaner UI
+              showSequenceControl: false,
+              showFullPageControl: false,
+              showZoomControl: false,
+              showHomeControl: false,
+              showRotationControl: false,
+              gestureSettingsMouse: { clickToZoom: true },
               constrainDuringPan: true,
               homeFillsViewer: true,
               visibilityRatio: 0.5,
@@ -893,15 +900,15 @@ export default function TileViewer({
             };
 
             // attach bidirectional sync
-            const cleanupA = sync(mainViewer, compareViewer, "main->compare");
-            const cleanupB = sync(compareViewer, mainViewer, "compare->main");
+            sync(mainViewer, compareViewer, "main->compare");
+            sync(compareViewer, mainViewer, "compare->main");
 
             // set overlay opacity if in overlay mode (use world item)
             try {
               if (viewMode === "overlay" && compareViewer.world.getItemAt(0)) {
                 compareViewer.world.getItemAt(0).setOpacity(overlayOpacity);
               }
-            } catch (err) {
+            } catch (_err) {
               // ignore
             }
 
@@ -932,10 +939,10 @@ export default function TileViewer({
     try {
       const item = cmp.world.getItemAt(0);
       if (item && item.setOpacity) item.setOpacity(overlayOpacity);
-    } catch (err) {
+    } catch (_err) {
       // ignore
     }
-  }, [overlayOpacity, viewMode]);
+  }, [overlayOpacity, viewMode, compareViewerObjRef]);
 
   // Helper to format dates for different APIs
   function formatDateForTemplate(date: string, template: any): string {
@@ -955,10 +962,10 @@ export default function TileViewer({
   }
 
   // Helper to pick the currently selected template object
-  function getActiveTemplate() {
-    const list = TREK_TEMPLATES[selectedBody];
-    return list.find((l) => l.id === selectedLayerId) || list[0];
-  }
+  // function getActiveTemplate() {
+  //   const list = TREK_TEMPLATES[selectedBody];
+  //   return list.find((l) => l.id === selectedLayerId) || list[0];
+  // }
 
   // USGS Gazetteer KML/KMZ example links are available from the USGS "KML and Shapefile downloads" page.
   // Example KMZ (center points) for Moon and Mars (listed on USGS downloads page):
@@ -1220,7 +1227,8 @@ export default function TileViewer({
   return (
     <div style={{ display: "flex", gap: 12 }}>
       <div style={{ flex: 1 }}>
-        <div style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+        {/* Hidden controls - only show minimal UI */}
+        <div style={{ marginBottom: 8, display: "none" }}>
           <label>
             Body:
             <select value={selectedBody} onChange={(e) => {
