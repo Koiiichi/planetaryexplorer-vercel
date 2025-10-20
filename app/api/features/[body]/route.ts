@@ -4,10 +4,10 @@ import { join } from 'path';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { body: string } }
+  { params }: { params: Promise<{ body: string }> }
 ) {
   try {
-    const { body } = params;
+    const { body } = await params;
     
     // Validate body parameter
     const validBodies = ['moon', 'mars', 'mercury'];
@@ -32,7 +32,7 @@ export async function GET(
       },
     });
   } catch (error) {
-    console.error(`Error loading ${params.body} features:`, error);
+    console.error(`Error loading features:`, error);
     return NextResponse.json(
       { error: 'Failed to load features' },
       { status: 500 }
