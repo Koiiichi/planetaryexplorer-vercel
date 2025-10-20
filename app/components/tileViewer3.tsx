@@ -6,6 +6,7 @@ import JSZip from "jszip";
 // @ts-ignore - togeojson doesn't have types
 import toGeoJSON from "togeojson";
 import type { FeatureCollection, Point } from "geojson";
+import InfoPanel from './InfoPanel';
 
 type BodyKey =
   | "earth"
@@ -292,6 +293,9 @@ export default function TileViewer({
   const [temporalMode, setTemporalMode] = useState<"single" | "compare" | "animation">("single");
   const [features, setFeatures] = useState<PlanetFeature[]>([]);
   const [searchText, setSearchText] = useState<string>(externalSearchQuery ?? "");
+  const [isSearching, setIsSearching] = useState(false);
+  const [showInfoPanel, setShowInfoPanel] = useState(false);
+  const [selectedFeature, setSelectedFeature] = useState<any>(null);
 
   console.log('[TileViewer3 RENDER] initialBody:', initialBody, 'selectedBody:', selectedBody, 'selectedLayerId:', selectedLayerId, 'hasExternalBodySynced:', hasExternalBodySynced.current);
 
@@ -302,33 +306,45 @@ export default function TileViewer({
     }
   }, [externalSearchQuery]);
 
-  // Auto-search for planetary features when search text changes
+  // Enhanced search with backend AI integration
   useEffect(() => {
     if (searchText.trim() && searchText.length > 2) {
-      const debounceTimer = setTimeout(() => {
-        switch (selectedBody) {
-          case "earth":
-            searchEarthLocations(searchText.trim());
-            break;
-          case "moon":
-            loadMoonGazetteer();
-            break;
-          case "mars":
-            queryMarsCraterDB();
-            break;
-          case "mercury":
-            loadMercuryGazetteer();
-            break;
-          case "ceres":
-            loadCeresGazetteer();
-            break;
-          case "vesta":
-            loadVestaGazetteer();
-            break;
+      const debounceTimer = setTimeout(async () => {
+        setIsSearching(true);
+        try {
+          // Try backend AI search first
+          await searchWithBackend(searchText.trim());
+        } catch (error) {
+          console.warn('Backend search failed, falling back to local search:', error);
+          // Fallback to local search
+          switch (selectedBody) {
+            case "earth":
+              searchEarthLocations(searchText.trim());
+              break;
+            case "moon":
+              loadMoonGazetteer();
+              break;
+            case "mars":
+              queryMarsCraterDB();
+              break;
+            case "mercury":
+              loadMercuryGazetteer();
+              break;
+            case "ceres":
+              loadCeresGazetteer();
+              break;
+            case "vesta":
+              loadVestaGazetteer();
+              break;
+          }
+        } finally {
+          setIsSearching(false);
         }
       }, 500); // 500ms debounce
       
       return () => clearTimeout(debounceTimer);
+    } else if (!searchText.trim()) {
+      setFeatures([]);
     }
   }, [searchText, selectedBody]);
 
@@ -592,8 +608,11 @@ export default function TileViewer({
       viewer = new osd.Viewer({
         element: viewerRef.current,
         prefixUrl: "https://cdn.jsdelivr.net/npm/openseadragon@latest/build/openseadragon/images/",
-        showNavigator: true,
-        navigatorSizeRatio: 0.15,
+        showNavigator: false,  // Hide by default for cleaner Google Earth-style interface
+        showZoomControl: false,
+        showHomeControl: false,
+        showFullPageControl: false,
+        showRotationControl: false,
         tileSources: [tileSource as any],
         gestureSettingsMouse: { clickToZoom: false },
         constrainDuringPan: true,
@@ -769,8 +788,10 @@ export default function TileViewer({
           element: viewerRef.current,
           prefixUrl: "https://cdn.jsdelivr.net/npm/openseadragon@latest/build/openseadragon/images/",
           tileSources: [tileSource],
-          showNavigator: true,
-          navigatorSizeRatio: 0.18,
+          showNavigator: false,  // Hide by default for cleaner interface
+          showZoomControl: false,
+          showHomeControl: false, 
+          showFullPageControl: false,
           gestureSettingsMouse: { clickToZoom: false },
           constrainDuringPan: true,
           homeFillsViewer: true,
@@ -850,8 +871,10 @@ export default function TileViewer({
               element: compareViewerRef.current,
               prefixUrl: "https://cdn.jsdelivr.net/npm/openseadragon@latest/build/openseadragon/images/",
               tileSources: [compareTileSource],
-              showNavigator: viewMode === "split",
-              navigatorSizeRatio: 0.14,
+              showNavigator: false,  // Always hide in compare mode
+              showZoomControl: false,
+              showHomeControl: false,
+              showFullPageControl: false,
               gestureSettingsMouse: { clickToZoom: false },
               constrainDuringPan: true,
               homeFillsViewer: true,
@@ -1049,6 +1072,67 @@ export default function TileViewer({
     }
   }
 
+  // Enhanced search with backend integration
+  async function searchWithBackend(query: string) {
+    if (!backendBase) {
+      throw new Error('Backend not available');
+    }
+    
+    try {
+      const response = await fetch(`${backendBase}/search`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Search failed: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      
+      if (result.found) {
+        // Navigate to the found location with flyTo animation
+        const { body, center, feature } = result;
+        
+        // Set the body to match the search result
+        if (body !== selectedBody) {
+          setSelectedBody(body);
+        }
+        
+        // Create feature for display
+        const searchFeature = {
+          name: feature.name,
+          lat: center.lat,
+          lon: center.lon,
+          category: feature.category,
+          diameter_km: feature.diameter_km
+        };
+        
+        setFeatures([searchFeature]);
+        
+        // Fly to the location
+        setTimeout(() => {
+          flyToLocation(center.lon, center.lat, 6, searchFeature);
+        }, 1000);
+        
+        console.log('ui.flow', 'search_completed', {
+          query,
+          result: feature.name,
+          provider: result.provider || 'unknown'
+        });
+      } else {
+        setFeatures([]);
+        console.log('No results found for query:', query);
+      }
+    } catch (error) {
+      console.error('Backend search error:', error);
+      throw error;
+    }
+  }
+
   async function searchEarthLocations(query: string) {
     if (!query.trim()) return;
     
@@ -1123,8 +1207,104 @@ export default function TileViewer({
     }
   }
 
-  // Utility: pan/zoom viewer to lon/lat for NASA Trek tiles
+  // Enhanced navigation with animation and info panel
+  function flyToLocation(lon: number, lat: number, zoomLevel = 4, featureData?: any) {
+    const v = viewerObjRef.current;
+    if (!v) return;
+
+    console.log('ui.flow', 'camera_flyto_started', { lon, lat, zoom: zoomLevel });
+    const startTime = Date.now();
+
+    // Normalize lon from -180..180 to 0..360 used by Trek tile images
+    lon = ((lon % 360) + 360) % 360;
+    lat = Math.max(-90, Math.min(90, lat));
+
+    // get image dimensions from the first world item
+    let sourceItem;
+    try {
+      sourceItem = v.world.getItemAt(0);
+    } catch (err) {
+      console.error("No world item in viewer", err);
+      return;
+    }
+    if (!sourceItem || !sourceItem.source) {
+      console.error("No source info");
+      return;
+    }
+    const imgW = sourceItem.source.width;
+    const imgH = sourceItem.source.height;
+
+    // Convert lon/lat to image pixel coordinates
+    const x = (lon / 360) * imgW;
+    const y = ((90 - lat) / 180) * imgH;
+
+    // Add marker
+    try {
+      const marker = document.createElement("div");
+      marker.style.cssText = `
+        width: 20px;
+        height: 20px;
+        background: #ff6b6b;
+        border: 2px solid white;
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        z-index: 100;
+      `;
+
+      v.addOverlay({
+        element: marker,
+        location: v.viewport.imageToViewportCoordinates(x, y),
+        placement: "CENTER",
+        checkResize: false,
+      });
+      
+      console.log('ui.flow', 'pin_rendered', true);
+    } catch (err) {
+      console.error("Error adding overlay:", err);
+    }
+
+    // Smooth flyTo animation
+    const viewportPoint = v.viewport.imageToViewportCoordinates(x, y);
+    
+    // Enable animation for smooth transition
+    v.animationTime = 1.2;
+    v.viewport.panTo(viewportPoint, true);
+    
+    setTimeout(() => {
+      v.viewport.zoomTo(zoomLevel, viewportPoint, true);
+      
+      // Log completion and show info panel
+      const endTime = Date.now();
+      console.log('ui.flow', 'camera_flyto_completed', { 
+        duration: endTime - startTime,
+        target: { lon, lat, zoom: zoomLevel }
+      });
+      
+      // Show info panel if feature data provided
+      if (featureData) {
+        setSelectedFeature({
+          name: featureData.name,
+          body: selectedBody,
+          lat: featureData.lat,
+          lon: featureData.lon,
+          category: featureData.category,
+          diameter_km: featureData.diameter_km,
+          keywords: featureData.keywords || []
+        });
+        setShowInfoPanel(true);
+        console.log('ui.flow', 'info_panel_opened', { feature: featureData.name });
+      }
+    }, 300);
+  }
+
+  // Legacy function - now uses flyToLocation
   function panToLonLat(lon: number, lat: number, zoomLevel = 4) {
+    flyToLocation(lon, lat, zoomLevel);
+  }
+
+  // Utility: pan/zoom viewer to lon/lat for NASA Trek tiles (original implementation)
+  function panToLonLatOriginal(lon: number, lat: number, zoomLevel = 4) {
     const v = viewerObjRef.current;
     if (!v) return;
 
@@ -1360,7 +1540,7 @@ export default function TileViewer({
       </div>
 
       <aside style={{ width: 360, borderLeft: "1px solid #eee", padding: 8, overflow: "auto" }}>
-        <h3>Features / Search</h3>
+        <h3>Features / Search {isSearching && <span style={{ fontSize: '12px', color: '#666' }}>Searching...</span>}</h3>
         <div style={{ position: "relative", marginBottom: 8 }}>
           <input 
             type="text" 
@@ -1403,7 +1583,7 @@ export default function TileViewer({
           <ul style={{ listStyle: "none", padding: 0 }}>
             {filteredFeatures.map((f, i) => (
               <li key={i} style={{ marginBottom: 8 }}>
-                <button style={{ width: "100%", textAlign: "left" }} onClick={() => panToLonLat(f.lon, f.lat, 6)}>
+                <button style={{ width: "100%", textAlign: "left" }} onClick={() => flyToLocation(f.lon, f.lat, 6, f)}>
                   <strong>{f.name}</strong>
                   <div style={{ fontSize: 12 }}>{f.lat.toFixed(4)}, {f.lon.toFixed(4)} {f.diamkm ? `• ${f.diamkm} km` : ""}</div>
                 </button>
@@ -1412,6 +1592,13 @@ export default function TileViewer({
           </ul>
         )}
       </aside>
+      
+      {/* Info Panel */}
+      <InfoPanel 
+        isOpen={showInfoPanel}
+        onClose={() => setShowInfoPanel(false)}
+        feature={selectedFeature}
+      />
     </div>
   );
 }

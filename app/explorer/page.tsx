@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
+import { Search, MapPin, Compass } from 'lucide-react';
 import GlassSearchBar from '../components/search_bar';
 import TileViewerWrapper from '../components/tileViewWrapper';
 
@@ -149,19 +150,28 @@ function ExplorerContent() {
           {/* Help section */}
           <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="p-4 bg-white/5 rounded-lg border border-white/10">
-              <h3 className="text-white font-semibold mb-2 text-sm">🔍 Search</h3>
+              <h3 className="text-white font-semibold mb-2 text-sm flex items-center gap-2">
+                <Search size={16} />
+                Search
+              </h3>
               <p className="text-white/60 text-xs">
                 Type feature names or use coordinates to find locations
               </p>
             </div>
             <div className="p-4 bg-white/5 rounded-lg border border-white/10">
-              <h3 className="text-white font-semibold mb-2 text-sm">📍 Mark</h3>
+              <h3 className="text-white font-semibold mb-2 text-sm flex items-center gap-2">
+                <MapPin size={16} />
+                Mark
+              </h3>
               <p className="text-white/60 text-xs">
                 Click on features to place markers and view details
               </p>
             </div>
             <div className="p-4 bg-white/5 rounded-lg border border-white/10">
-              <h3 className="text-white font-semibold mb-2 text-sm">🗺️ Navigate</h3>
+              <h3 className="text-white font-semibold mb-2 text-sm flex items-center gap-2">
+                <Compass size={16} />
+                Navigate
+              </h3>
               <p className="text-white/60 text-xs">
                 Pan, zoom, and explore gigapixel planetary imagery
               </p>
