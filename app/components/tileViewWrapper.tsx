@@ -11,6 +11,7 @@ interface TileViewerWrapperProps {
   initialLat?: number;
   initialLon?: number;
   initialZoom?: number;
+  hideUI?: boolean;
 }
 
 export default function TileViewerWrapper({ 
@@ -18,7 +19,8 @@ export default function TileViewerWrapper({
   initialBody, 
   initialLat, 
   initialLon, 
-  initialZoom 
+  initialZoom,
+  hideUI = true
 }: TileViewerWrapperProps) {
   const router = useRouter();
 
@@ -41,6 +43,7 @@ export default function TileViewerWrapper({
       initialLat={initialLat}
       initialLon={initialLon}
       initialZoom={initialZoom}
+      hideUI={hideUI}
     />
   );
 }

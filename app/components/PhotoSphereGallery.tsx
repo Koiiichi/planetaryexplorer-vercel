@@ -13,6 +13,7 @@ type ImageData = {
   lat?: number;
   lon?: number;
   zoom?: number;
+  feature_type?: string;
 };
 
 const getPlanetaryThumbnail = (body: string, lat: number, lon: number, zoom: number = 3): string => {
@@ -79,7 +80,7 @@ export default function PhotoSphereGallery() {
             } else {
               planetFeatures[body] = [];
             }
-          } catch (error) {
+          } catch {
             planetFeatures[body] = [];
           }
         }
@@ -88,7 +89,7 @@ export default function PhotoSphereGallery() {
         const totalLoaded = Object.values(planetFeatures).reduce((sum, arr) => sum + arr.length, 0);
         const failedCount = Object.values(planetFeatures).filter(arr => arr.length === 0).length;
         const sampleNames = Object.entries(planetFeatures)
-          .filter(([_, feats]) => feats.length > 0)
+          .filter(([, feats]) => feats.length > 0)
           .flatMap(([body, feats]) => feats.slice(0, 3).map(f => `${body}:${f.name}`))
           .slice(0, 5);
         

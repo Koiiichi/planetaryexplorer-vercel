@@ -258,6 +258,7 @@ interface TileViewerProps {
   initialLat?: number;
   initialLon?: number;
   initialZoom?: number;
+  hideUI?: boolean;
 }
 
 export default function TileViewer({ 
@@ -266,7 +267,8 @@ export default function TileViewer({
   initialBody,
   initialLat,
   initialLon,
-  initialZoom 
+  initialZoom,
+  hideUI = false
 }: TileViewerProps) {
   // refs and viewer instances
   const viewerRef = useRef<HTMLDivElement | null>(null);
@@ -289,8 +291,6 @@ export default function TileViewer({
   const [overlayOpacity, setOverlayOpacity] = useState<number>(0.5);
   const [viewMode, setViewMode] = useState<"single" | "split" | "overlay">("single");
   const [selectedDate, setSelectedDate] = useState<string>("");
-  const [compareDate, setCompareDate] = useState<string>(""); // For temporal comparison
-  const [temporalMode, setTemporalMode] = useState<"single" | "compare" | "animation">("single");
   const [features, setFeatures] = useState<PlanetFeature[]>([]);
   const [searchText, setSearchText] = useState<string>(externalSearchQuery ?? "");
   const [isSearching, setIsSearching] = useState(false);
@@ -349,6 +349,7 @@ export default function TileViewer({
     } else if (!searchText.trim()) {
       setFeatures([]);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchText, selectedBody]);
 
   // client-side detection to prevent hydration mismatch
@@ -430,7 +431,7 @@ export default function TileViewer({
     })();
 
     return () => { mounted = false; };
-  }, [backendBase, selectedLayerId, selectedBody]);
+  }, [selectedLayerId, selectedBody]);
 
   // Load layer config (either from backend or from local TREK_TEMPLATES)
   useEffect(() => {
@@ -692,11 +693,13 @@ export default function TileViewer({
     const cleanup = () => {
       try {
         if (mainViewer) { mainViewer.destroy(); mainViewer = null; }
-      } catch (e) { // ignore
+      } catch {
+        // ignore
       }
       try {
         if (compareViewer) { compareViewer.destroy(); compareViewer = null; }
-      } catch (e) { // ignore
+      } catch {
+        // ignore
       }
       viewerObjRef.current = null;
       compareViewerObjRef.current = null;
@@ -763,7 +766,7 @@ export default function TileViewer({
             if (y < 0 || y >= maxTiles) return "";
 
             let finalY = y;
-            let finalX = wrappedX;
+            const finalX = wrappedX;
             
             // Special handling for NASA GIBS (uses TMS coordinate system)
             if (template.includes('gibs.earthdata.nasa.gov')) {
@@ -847,7 +850,7 @@ export default function TileViewer({
                 if (y < 0 || y >= maxTiles) return "";
                 
                 let finalY = y;
-                let finalX = wrappedX;
+                const finalX = wrappedX;
                 
                 let url = compareTemplate.template;
                 if (compareTemplate.type === "temporal" && selectedDate) {
@@ -919,15 +922,15 @@ export default function TileViewer({
             };
 
             // attach bidirectional sync
-            const cleanupA = sync(mainViewer, compareViewer, "main->compare");
-            const cleanupB = sync(compareViewer, mainViewer, "compare->main");
+            sync(mainViewer, compareViewer, "main->compare");
+            sync(compareViewer, mainViewer, "compare->main");
 
             // set overlay opacity if in overlay mode (use world item)
             try {
               if (viewMode === "overlay" && compareViewer.world.getItemAt(0)) {
                 compareViewer.world.getItemAt(0).setOpacity(overlayOpacity);
               }
-            } catch (err) {
+            } catch {
               // ignore
             }
 
@@ -948,6 +951,7 @@ export default function TileViewer({
       viewerObjRef.current = null;
       compareViewerObjRef.current = null;
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBody, selectedLayerId, selectedOverlayId, viewMode, selectedDate, layerConfig]);
 
   // Update overlay opacity when it changes
@@ -958,7 +962,7 @@ export default function TileViewer({
     try {
       const item = cmp.world.getItemAt(0);
       if (item && item.setOpacity) item.setOpacity(overlayOpacity);
-    } catch (err) {
+    } catch {
       // ignore
     }
   }, [overlayOpacity, viewMode]);
@@ -978,12 +982,6 @@ export default function TileViewer({
       default:
         return date;
     }
-  }
-
-  // Helper to pick the currently selected template object
-  function getActiveTemplate() {
-    const list = TREK_TEMPLATES[selectedBody];
-    return list.find((l) => l.id === selectedLayerId) || list[0];
   }
 
   // USGS Gazetteer KML/KMZ example links are available from the USGS "KML and Shapefile downloads" page.
@@ -1301,96 +1299,16 @@ export default function TileViewer({
   }
 
   // Legacy function - now uses flyToLocation
-  function panToLonLat(lon: number, lat: number, zoomLevel = 4) {
-    flyToLocation(lon, lat, zoomLevel);
-  }
+  // function panToLonLat(lon: number, lat: number, zoomLevel = 4) {
+  //   flyToLocation(lon, lat, zoomLevel);
+  // }
 
   // Utility: pan/zoom viewer to lon/lat for NASA Trek tiles (original implementation)
-  function panToLonLatOriginal(lon: number, lat: number, zoomLevel = 4) {
-    const v = viewerObjRef.current;
-    if (!v) return;
-
-    // Normalize lon from -180..180 to 0..360 used by Trek tile images
-    lon = ((lon % 360) + 360) % 360;
-    lat = Math.max(-90, Math.min(90, lat));
-
-    // get image dimensions from the first world item
-    let sourceItem;
-    try {
-      sourceItem = v.world.getItemAt(0);
-    } catch (err) {
-      console.error("No world item in viewer", err);
-      return;
-    }
-    if (!sourceItem || !sourceItem.source) {
-      console.error("No source info");
-      return;
-    }
-    const imgW = sourceItem.source.width;
-    const imgH = sourceItem.source.height;
-    if (!imgW || !imgH) {
-      console.error("Invalid source dimensions", imgW, imgH);
-      return;
-    }
-
-    // convert lon/lat -> image pixels
-    let x: number;
-    let y: number;
-    
-    // Check if this is an Earth dataset (Web Mercator projection)
-    if (selectedBody === "earth") {
-      // Web Mercator projection (EPSG:3857)
-      // Convert longitude to X (simple linear conversion)
-      x = ((lon + 180) / 360) * imgW;
-      
-      // Convert latitude to Y using Web Mercator formula
-      const latRad = (lat * Math.PI) / 180;
-      const mercatorY = Math.log(Math.tan(Math.PI / 4 + latRad / 2));
-      // Normalize from [-π, π] to [0, 1] and flip Y coordinate
-      y = ((Math.PI - mercatorY) / (2 * Math.PI)) * imgH;
-    } else {
-      // For other planetary bodies, use simple equirectangular projection
-      x = ((lon + 180) / 360) * imgW;
-      y = ((90 - lat) / 180) * imgH;
-    }
-
-    // create marker element
-    const marker = document.createElement("div");
-    marker.className = "feature-marker";
-    marker.style.cssText = `
-      width: 22px; height:22px; border:3px solid rgba(255,80,80,0.95);
-      border-radius:50%; background: rgba(255, 80, 80, 0.25);
-      transform: translate(-50%, -50%); pointer-events: auto;
-    `;
-
-    // remove old markers and overlays
-    document.querySelectorAll(".feature-marker").forEach((el) => el.remove());
-    // Clear existing overlays from viewer
-    try {
-      v.clearOverlays();
-    } catch (err) {
-      console.warn("Could not clear overlays:", err);
-    }
-
-    // add overlay
-    try {
-      v.addOverlay({
-        element: marker,
-        location: v.viewport.imageToViewportCoordinates(x, y),
-        placement: "CENTER",
-        checkResize: false,
-      });
-    } catch (err) {
-      console.error("Error adding overlay:", err);
-    }
-
-    // pan+zoom
-    const viewportPoint = v.viewport.imageToViewportCoordinates(x, y);
-    v.viewport.panTo(viewportPoint, true);
-    setTimeout(() => {
-      v.viewport.zoomTo(zoomLevel, viewportPoint, true);
-    }, 120);
-  }
+  // function panToLonLatOriginal(lon: number, lat: number, zoomLevel = 4) {
+  //   const v = viewerObjRef.current;
+  //   if (!v) return;
+  //   ... (commented out - legacy code)
+  // }
 
   // filtered features by search text
   const filteredFeatures = features.filter((f) => {
@@ -1399,6 +1317,39 @@ export default function TileViewer({
   });
 
   // ---------- UI -----------------------------------------------------
+  if (hideUI) {
+    // Minimal full-bleed mode for glass overlay UI
+    return (
+      <div className="pe-viewer-fullbleed" style={{ width: "100%", height: "100vh", position: "relative" }}>
+        <div style={{ width: "100%", height: "100%", position: "relative" }}>
+          {!isClient ? (
+            <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", background: "#000", color: "white" }}>
+              Loading viewer...
+            </div>
+          ) : !layerConfig ? (
+            <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", background: "#000", color: "white" }}>
+              {selectedLayerId ? `Loading layer: ${selectedLayerId}...` : `Loading ${selectedBody}...`}
+            </div>
+          ) : (
+            <>
+              <div ref={viewerRef} style={{ width: "100%", height: "100%", position: "absolute", left: 0, top: 0 }} />
+            </>
+          )}
+        </div>
+        
+        {/* Info Panel */}
+        <InfoPanel 
+          isOpen={showInfoPanel}
+          onClose={() => setShowInfoPanel(false)}
+          feature={selectedFeature}
+          provider={searchProvider}
+          aiDescription={aiDescription}
+        />
+      </div>
+    );
+  }
+
+  // ---------- UI (full controls mode) -----------------------------------------------------
   return (
     <div style={{ display: "flex", gap: 12 }}>
       <div style={{ flex: 1 }}>

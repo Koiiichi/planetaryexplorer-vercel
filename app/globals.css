@@ -24,3 +24,39 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.glass {
+  @apply bg-white/10 dark:bg-zinc-900/30 backdrop-blur-xl border border-white/20 dark:border-white/10 shadow-lg ring-1 ring-inset ring-white/10;
+}
+
+.glass-card {
+  @apply glass rounded-2xl p-4 md:p-5;
+}
+
+.glass-bar {
+  @apply glass rounded-full px-4 py-2 md:px-6 md:py-3;
+}
+
+@keyframes pin-pulse {
+  0%, 100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.2);
+    opacity: 0.8;
+  }
+}
+
+.pin-pulse {
+  animation: pin-pulse 2s ease-in-out infinite;
+}
+
+/* Full-bleed viewer mode */
+.pe-viewer-fullbleed {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 1 !important;
+}
