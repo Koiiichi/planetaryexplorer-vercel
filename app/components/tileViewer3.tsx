@@ -1337,14 +1337,16 @@ export default function TileViewer({
           )}
         </div>
         
-        {/* Info Panel */}
-        <InfoPanel 
-          isOpen={showInfoPanel}
-          onClose={() => setShowInfoPanel(false)}
-          feature={selectedFeature}
-          provider={searchProvider}
-          aiDescription={aiDescription}
-        />
+        {/* Info Panel (Legacy - hidden by default) */}
+        {process.env.NEXT_PUBLIC_ENABLE_LEGACY_UI === 'true' && (
+          <InfoPanel 
+            isOpen={showInfoPanel}
+            onClose={() => setShowInfoPanel(false)}
+            feature={selectedFeature}
+            provider={searchProvider}
+            aiDescription={aiDescription}
+          />
+        )}
       </div>
     );
   }
@@ -1546,14 +1548,16 @@ export default function TileViewer({
         )}
       </aside>
       
-      {/* Info Panel */}
-      <InfoPanel 
-        isOpen={showInfoPanel}
-        onClose={() => setShowInfoPanel(false)}
-        feature={selectedFeature}
-        provider={searchProvider}
-        aiDescription={aiDescription}
-      />
+      {/* Info Panel (Legacy - hidden by default) */}
+      {process.env.NEXT_PUBLIC_ENABLE_LEGACY_UI === 'true' && (
+        <InfoPanel 
+          isOpen={showInfoPanel}
+          onClose={() => setShowInfoPanel(false)}
+          feature={selectedFeature}
+          provider={searchProvider}
+          aiDescription={aiDescription}
+        />
+      )}
       
       {/* Search Suggestions */}
       {searchSuggestions.length > 0 && !showInfoPanel && (

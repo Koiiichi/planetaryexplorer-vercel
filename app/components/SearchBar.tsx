@@ -71,6 +71,18 @@ export default function SearchBar({
 
   return (
     <div className={`relative ${className}`} data-pe-searchbar>
+      {/* Progress bar at top */}
+      {isLoading && (
+        <div className="absolute -top-1 left-0 right-0 h-0.5 bg-white/10 rounded-full overflow-hidden">
+          <div className="h-full bg-blue-400 animate-[shimmer_1.5s_ease-in-out_infinite]" 
+               style={{
+                 background: 'linear-gradient(90deg, transparent, rgba(96, 165, 250, 0.8), transparent)',
+                 backgroundSize: '200% 100%',
+                 animation: 'shimmer 1.5s ease-in-out infinite'
+               }} />
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="glass-bar flex items-center gap-3">
         <Search className="text-white/70 w-5 h-5 flex-shrink-0" />
         <input
@@ -84,6 +96,14 @@ export default function SearchBar({
           className="flex-grow bg-transparent outline-none text-white placeholder-white/50 text-base disabled:opacity-50"
         />
         {isLoading && <Loader2 className="w-5 h-5 text-white/70 animate-spin flex-shrink-0" />}
+        <button
+          type="submit"
+          disabled={isLoading || !query.trim()}
+          className="sr-only"
+          aria-label="Search"
+        >
+          Search
+        </button>
       </form>
 
       {showNotFound && (

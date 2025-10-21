@@ -173,6 +173,12 @@ export default function PhotoSphereGallery() {
     let vel = 0;
     let velY = 0;
     let isFocused = false;
+    
+    // Hover-hold mechanics
+    let hoveredSprite: THREE.Sprite | null = null;
+    let hoverStartTime = 0;
+    const HOLD_THRESHOLD_MS = 5000;
+    let baseSpinSpeed = 0.002;
 
     function scatteredSpherePoints(N: number) {
       const points: THREE.Vector3[] = [];
@@ -335,7 +341,31 @@ export default function PhotoSphereGallery() {
     };
 
     const handlePointerMove = (e: PointerEvent) => {
-      if (!isDragging) return;
+      if (!isDragging) {
+        // Check for hover
+        const rect = renderer.domElement.getBoundingClientRect();
+        const mouse = new THREE.Vector2(
+          ((e.clientX - rect.left) / rect.width) * 2 - 1,
+          -((e.clientY - rect.top) / rect.height) * 2 + 1
+        );
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(group.children, true);
+        
+        if (intersects.length > 0) {
+          const sprite = intersects[0].object as THREE.Sprite;
+          if (hoveredSprite !== sprite) {
+            hoveredSprite = sprite;
+            hoverStartTime = Date.now();
+          }
+        } else {
+          hoveredSprite = null;
+          hoverStartTime = 0;
+        }
+        return;
+      }
+      
+      // Dragging logic
       const dx = e.clientX - prevX;
       const dy = e.clientY - prevY;
       prevX = e.clientX;
@@ -447,8 +477,17 @@ export default function PhotoSphereGallery() {
         sceneRef.current.animationId = id;
       }
 
+      // Check hover-hold for slow spin
+      let spinMultiplier = 1.0;
+      if (hoveredSprite && hoverStartTime > 0) {
+        const hoverDuration = Date.now() - hoverStartTime;
+        if (hoverDuration >= HOLD_THRESHOLD_MS) {
+          spinMultiplier = 0.25; // Slow spin
+        }
+      }
+
       if (!isDragging && !isFocused) {
-        group.rotation.y += 0.002 + (vel * 0.01);
+        group.rotation.y += (baseSpinSpeed * spinMultiplier) + (vel * 0.01);
         vel *= 0.95;
         group.rotation.x += velY * 0.01;
         group.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, group.rotation.x));

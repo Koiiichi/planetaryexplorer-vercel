@@ -6,6 +6,7 @@ import SearchBar from '../components/SearchBar';
 import ResultCard from '../components/ResultCard';
 import HUD from '../components/HUD';
 import TileViewerWrapper from '../components/tileViewWrapper';
+import AdvancedDrawer from '../components/AdvancedDrawer';
 
 function ExplorerContent() {
   const searchParams = useSearchParams();
@@ -23,6 +24,20 @@ function ExplorerContent() {
     lon?: number;
     zoom?: number;
   }>({});
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Load advanced settings from localStorage
+  useEffect(() => {
+    const storedAdvancedOpen = localStorage.getItem('pe_advanced_open');
+    if (storedAdvancedOpen === 'true') {
+      setShowAdvanced(true);
+    }
+  }, []);
+
+  // Save advanced state to localStorage
+  useEffect(() => {
+    localStorage.setItem('pe_advanced_open', showAdvanced.toString());
+  }, [showAdvanced]);
 
   useEffect(() => {
     const query = searchParams.get('search');
@@ -131,17 +146,19 @@ function ExplorerContent() {
       </div>
 
       {/* Search bar overlay */}
-      <div className="fixed top-6 left-1/2 -translate-x-1/2 w-full max-w-[720px] px-4 z-50">
-        <SearchBar
-          value={searchQuery}
-          onSearch={handleSearch}
-          isLoading={isSearching}
-          suggestions={suggestions}
-          onSuggestionSelect={handleSuggestionSelect}
-          showNotFound={showNotFound}
-          notFoundMessage="Try one of the suggestions below or refine your search"
-          onDismissNotFound={() => setShowNotFound(false)}
-        />
+      <div className="fixed top-5 left-1/2 -translate-x-1/2 w-full px-4 z-50">
+        <div className="mx-auto max-w-[720px] md:max-w-[640px] sm:max-w-[520px]">
+          <SearchBar
+            value={searchQuery}
+            onSearch={handleSearch}
+            isLoading={isSearching}
+            suggestions={suggestions}
+            onSuggestionSelect={handleSuggestionSelect}
+            showNotFound={showNotFound}
+            notFoundMessage="Try one of the suggestions below or refine your search"
+            onDismissNotFound={() => setShowNotFound(false)}
+          />
+        </div>
       </div>
 
       {/* HUD overlay */}
@@ -149,6 +166,19 @@ function ExplorerContent() {
         selectedBody={selectedBody}
         onBodyChange={handleBodyChange}
         showZoomControls={false}
+        showHomeButton={true}
+        showAdvancedButton={true}
+        onAdvancedToggle={() => setShowAdvanced(!showAdvanced)}
+        advancedOpen={showAdvanced}
+      />
+
+      {/* Advanced drawer */}
+      <AdvancedDrawer
+        isOpen={showAdvanced}
+        onClose={() => setShowAdvanced(false)}
+        onDatasetChange={(dataset) => console.log('Dataset changed:', dataset)}
+        onSplitViewToggle={(enabled) => console.log('Split view:', enabled)}
+        onOsdToolbarToggle={(visible) => console.log('OSD toolbar:', visible)}
       />
 
       {/* Result card overlay */}
@@ -159,6 +189,27 @@ function ExplorerContent() {
         provider={searchResult?.provider}
         aiDescription={searchResult?.ai_description}
       />
+
+      {/* Not found fallback glass card */}
+      {showNotFound && !suggestions.length && (
+        <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md px-4 z-40">
+          <div className="glass-card text-center">
+            <div className="text-white/90 font-semibold text-lg mb-2">
+              Feature Not Found
+            </div>
+            <p className="text-white/70 text-sm mb-4">
+              The requested feature could not be found in our dataset, or the request was not understood. 
+              Please try refining your search or use a different query.
+            </p>
+            <button
+              onClick={() => setShowNotFound(false)}
+              className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Footer */}
       <div className="fixed bottom-6 left-1/2 -translate-x-1/2 text-white/60 text-sm pointer-events-none" style={{ zIndex: 10 }}>

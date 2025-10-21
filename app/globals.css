@@ -98,6 +98,7 @@ body {
   }
 }
 
+
 @keyframes pin-pulse {
   0%, 100% {
     transform: translate(-50%, -50%) scale(1);
@@ -113,6 +114,15 @@ body {
   animation: pin-pulse 2s ease-in-out infinite;
 }
 
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
 /* Full-bleed viewer mode */
 .pe-viewer-fullbleed {
   position: fixed !important;
@@ -121,3 +131,4 @@ body {
   height: 100vh !important;
   z-index: 1 !important;
 }
+

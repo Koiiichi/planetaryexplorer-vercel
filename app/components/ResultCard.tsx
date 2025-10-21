@@ -1,7 +1,8 @@
 "use client";
 
-import { X, MapPin, Globe, Ruler, CheckCircle, Copy } from "lucide-react";
+import { X, MapPin, Globe, Ruler, CheckCircle, Copy, Loader2 } from "lucide-react";
 import { useState } from "react";
+import { useAiDescription } from "@/app/lib/useAiDescription";
 
 interface ResultCardProps {
   isOpen: boolean;
@@ -24,9 +25,20 @@ export default function ResultCard({
   onClose,
   feature,
   provider,
-  aiDescription,
+  aiDescription: serverAiDescription,
 }: ResultCardProps) {
   const [copied, setCopied] = useState(false);
+
+  // Use hook to fetch AI description if not provided from server
+  const featureKey = feature ? `${feature.body}:${feature.name}` : '';
+  const { description: hookDescription, isLoading: isLoadingDescription } = useAiDescription({
+    featureKey,
+    meta: feature || undefined,
+    enabled: isOpen && !!feature && !serverAiDescription
+  });
+
+  // Prefer server description, fallback to hook description
+  const aiDescription = serverAiDescription || hookDescription;
 
   if (!isOpen || !feature) return null;
 
@@ -94,12 +106,19 @@ export default function ResultCard({
           </div>
         )}
 
-        {aiDescription && (
+        {(aiDescription || isLoadingDescription) && (
           <div className="pt-3 border-t border-white/10">
             <div className="text-white/60 text-xs mb-2 uppercase tracking-wide">About</div>
-            <p className="text-white/90 text-sm leading-relaxed" data-pe-ai-desc>
-              {aiDescription}
-            </p>
+            {isLoadingDescription ? (
+              <div className="flex items-center gap-2 text-white/60 text-sm">
+                <Loader2 size={14} className="animate-spin" />
+                <span className="animate-pulse">Generating description...</span>
+              </div>
+            ) : (
+              <p className="text-white/90 text-sm leading-relaxed" data-pe-ai-desc>
+                {aiDescription}
+              </p>
+            )}
           </div>
         )}
 

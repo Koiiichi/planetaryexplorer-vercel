@@ -1,6 +1,8 @@
 "use client";
 
-import { ZoomIn, ZoomOut, Circle, Moon } from "lucide-react";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { ZoomIn, ZoomOut, Circle, Moon, Home, Settings } from "lucide-react";
 
 interface HUDProps {
   selectedBody: string;
@@ -9,6 +11,10 @@ interface HUDProps {
   onZoomOut?: () => void;
   showBodySelector?: boolean;
   showZoomControls?: boolean;
+  showHomeButton?: boolean;
+  showAdvancedButton?: boolean;
+  onAdvancedToggle?: () => void;
+  advancedOpen?: boolean;
 }
 
 export default function HUD({
@@ -18,7 +24,26 @@ export default function HUD({
   onZoomOut,
   showBodySelector = true,
   showZoomControls = true,
+  showHomeButton = true,
+  showAdvancedButton = true,
+  onAdvancedToggle,
+  advancedOpen = false,
 }: HUDProps) {
+  const router = useRouter();
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'h' || e.key === 'H') {
+        // Only trigger if not in an input field
+        if (document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+          router.push('/');
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [router]);
   const getBodyIcon = (body: string) => {
     switch (body.toLowerCase()) {
       case "moon":
@@ -47,6 +72,20 @@ export default function HUD({
 
   return (
     <div className="fixed top-6 right-6 z-50 flex flex-col gap-3">
+      {/* Home button - top left */}
+      {showHomeButton && (
+        <div className="fixed top-6 left-6 z-50">
+          <button
+            onClick={() => router.push('/')}
+            className="glass-bar flex items-center gap-2 px-4 py-2 text-white/70 hover:text-white transition-all hover:bg-white/15"
+            title="Home (H)"
+          >
+            <Home size={18} />
+            <span className="text-sm font-medium">Home</span>
+          </button>
+        </div>
+      )}
+
       {showBodySelector && (
         <div className="glass-bar flex items-center gap-2">
           {["Moon", "Mars", "Mercury"].map((body) => (
@@ -65,6 +104,22 @@ export default function HUD({
             </button>
           ))}
         </div>
+      )}
+
+      {/* Advanced settings toggle */}
+      {showAdvancedButton && (
+        <button
+          onClick={onAdvancedToggle}
+          className={`glass-bar flex items-center gap-2 px-4 py-2 transition-all ${
+            advancedOpen
+              ? "bg-white/20 text-white"
+              : "text-white/70 hover:text-white hover:bg-white/15"
+          }`}
+          title="Advanced Settings"
+        >
+          <Settings size={18} />
+          <span className="text-sm font-medium">Advanced</span>
+        </button>
       )}
 
       {showZoomControls && (
