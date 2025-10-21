@@ -1,0 +1,49 @@
+{
+  "character_map": {
+    "é": "e",
+    "è": "e",
+    "ê": "e",
+    "ë": "e",
+    "à": "a",
+    "á": "a",
+    "â": "a",
+    "ä": "a",
+    "ç": "c",
+    "ñ": "n",
+    "ü": "u",
+    "ö": "o",
+    "ï": "i",
+    "í": "i",
+    "ó": "o",
+    "ú": "u"
+  },
+  "synonyms": {
+    "crater": ["basin", "impact crater", "crater"],
+    "basin": ["crater", "planitia", "basin"],
+    "planitia": ["basin", "crater", "planitia"],
+    "mountain": ["mons", "montes", "mountain", "peak"],
+    "mons": ["mountain", "montes", "peak"],
+    "montes": ["mountain", "mons", "peaks"],
+    "valley": ["vallis", "valley", "canyon"],
+    "vallis": ["valley", "canyon"],
+    "mare": ["sea", "mare", "basin"],
+    "sea": ["mare", "sea"]
+  },
+  "body_aliases": {
+    "moon": ["moon", "lunar", "selene", "luna"],
+    "mars": ["mars", "martian", "red planet"],
+    "mercury": ["mercury", "hermes"]
+  },
+  "feature_type_mapping": {
+    "crater": "Crater",
+    "basin": "Crater",
+    "planitia": "Crater",
+    "mountain": "Mons",
+    "mons": "Mons",
+    "montes": "Montes",
+    "valley": "Vallis",
+    "vallis": "Vallis",
+    "mare": "Mare",
+    "sea": "Mare"
+  }
+}

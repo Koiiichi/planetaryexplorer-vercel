@@ -292,6 +292,9 @@ export default function TileViewer({
   const [temporalMode, setTemporalMode] = useState<"single" | "compare" | "animation">("single");
   const [features, setFeatures] = useState<PlanetFeature[]>([]);
   const [searchText, setSearchText] = useState<string>(externalSearchQuery ?? "");
+  const [searchResult, setSearchResult] = useState<any>(null);
+  const [searchSuggestions, setSearchSuggestions] = useState<string[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
   console.log('[TileViewer3 RENDER] initialBody:', initialBody, 'selectedBody:', selectedBody, 'selectedLayerId:', selectedLayerId, 'hasExternalBodySynced:', hasExternalBodySynced.current);
 
@@ -306,31 +309,15 @@ export default function TileViewer({
   useEffect(() => {
     if (searchText.trim() && searchText.length > 2) {
       const debounceTimer = setTimeout(() => {
-        switch (selectedBody) {
-          case "earth":
-            searchEarthLocations(searchText.trim());
-            break;
-          case "moon":
-            loadMoonGazetteer();
-            break;
-          case "mars":
-            queryMarsCraterDB();
-            break;
-          case "mercury":
-            loadMercuryGazetteer();
-            break;
-          case "ceres":
-            loadCeresGazetteer();
-            break;
-          case "vesta":
-            loadVestaGazetteer();
-            break;
-        }
+        performSearch(searchText.trim());
       }, 500); // 500ms debounce
       
       return () => clearTimeout(debounceTimer);
+    } else {
+      setSearchResult(null);
+      setSearchSuggestions([]);
     }
-  }, [searchText, selectedBody]);
+  }, [searchText]);
 
   // client-side detection to prevent hydration mismatch
   useEffect(() => {
@@ -1049,6 +1036,75 @@ export default function TileViewer({
     }
   }
 
+  function flyToLocation(lat: number, lon: number, zoom: number) {
+    if (viewerRef.current) {
+      const viewer = viewerRef.current;
+      viewer.viewer.entities.removeAll();
+      
+      // Add a marker at the location
+      viewer.viewer.entities.add({
+        position: Cesium.Cartesian3.fromDegrees(lon, lat),
+        point: {
+          pixelSize: 10,
+          color: Cesium.Color.YELLOW,
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 2,
+          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
+        }
+      });
+      
+      // Fly to the location
+      viewer.viewer.camera.flyTo({
+        destination: Cesium.Cartesian3.fromDegrees(lon, lat, 1000000),
+        duration: 2.0
+      });
+    }
+  }
+
+  async function performSearch(query: string) {
+    if (!query.trim()) return;
+    
+    setIsSearching(true);
+    try {
+      const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&debug=1`);
+      const result = await response.json();
+      
+      setSearchResult(result);
+      
+      if (result.found) {
+        // Update selected body if search result specifies one
+        if (result.body && result.body !== selectedBody) {
+          setSelectedBody(result.body as BodyKey);
+        }
+        
+        // Navigate to the found feature
+        if (result.center) {
+          flyToLocation(result.center.lat, result.center.lon, result.zoom || 6);
+        }
+        
+        // Load related features for the sidebar
+        if (result.related_features) {
+          const relatedFeatures: PlanetFeature[] = result.related_features.map((f: any) => ({
+            name: f.name,
+            lat: f.lat,
+            lon: f.lon,
+            diamkm: undefined
+          }));
+          setFeatures(relatedFeatures);
+        }
+      } else {
+        // Show suggestions for failed search
+        setSearchSuggestions(result.suggestions || []);
+        setFeatures([]);
+      }
+    } catch (error) {
+      console.error("Search error:", error);
+      setSearchResult({ found: false, error: "Search failed" });
+    } finally {
+      setIsSearching(false);
+    }
+  }
+
   async function searchEarthLocations(query: string) {
     if (!query.trim()) return;
     
@@ -1364,7 +1420,7 @@ export default function TileViewer({
         <div style={{ position: "relative", marginBottom: 8 }}>
           <input 
             type="text" 
-            placeholder="Filter features..." 
+            placeholder="Search planetary features..." 
             value={searchText} 
             onChange={(e) => {
               const newValue = e.target.value;
@@ -1378,6 +1434,8 @@ export default function TileViewer({
               onClick={() => {
                 setSearchText("");
                 onSearchChange?.("");
+                setSearchResult(null);
+                setSearchSuggestions([]);
               }}
               style={{
                 position: "absolute",
@@ -1397,6 +1455,79 @@ export default function TileViewer({
             </button>
           )}
         </div>
+
+        {/* Search Results */}
+        {isSearching && (
+          <div style={{ padding: "8px", color: "#666", fontSize: "14px" }}>
+            Searching...
+          </div>
+        )}
+
+        {searchResult && searchResult.found && (
+          <div style={{ marginBottom: "12px", padding: "8px", background: "#f0f0f0", borderRadius: "4px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+              <strong>{searchResult.feature?.name}</strong>
+              {searchResult.provider === "fact" && (
+                <span style={{ 
+                  background: "#4CAF50", 
+                  color: "white", 
+                  padding: "2px 6px", 
+                  borderRadius: "3px", 
+                  fontSize: "10px",
+                  fontWeight: "bold"
+                }}>
+                  Verified fact
+                </span>
+              )}
+            </div>
+            <div style={{ fontSize: "12px", color: "#666" }}>
+              {searchResult.feature?.category} on {searchResult.body}
+              {searchResult.feature?.diameter_km && ` • ${searchResult.feature.diameter_km} km`}
+            </div>
+            {searchResult.ai_description && (
+              <div style={{ 
+                marginTop: "8px", 
+                padding: "6px", 
+                background: "#e8f4fd", 
+                borderRadius: "3px", 
+                fontSize: "11px",
+                color: "#333"
+              }} data-pe-ai-desc>
+                {searchResult.ai_description}
+              </div>
+            )}
+          </div>
+        )}
+
+        {searchResult && !searchResult.found && searchSuggestions.length > 0 && (
+          <div style={{ marginBottom: "12px" }}>
+            <div style={{ fontSize: "12px", color: "#666", marginBottom: "4px" }}>
+              No results found. Try:
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+              {searchSuggestions.slice(0, 3).map((suggestion, index) => (
+                <button
+                  key={index}
+                  onClick={() => {
+                    setSearchText(suggestion.replace("Try: ", ""));
+                    onSearchChange?.(suggestion.replace("Try: ", ""));
+                  }}
+                  style={{
+                    background: "none",
+                    border: "1px solid #ddd",
+                    borderRadius: "3px",
+                    padding: "4px 8px",
+                    fontSize: "11px",
+                    cursor: "pointer",
+                    textAlign: "left"
+                  }}
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {filteredFeatures.length === 0 ? (
           <div style={{ color: "#888" }}>{features.length === 0 ? "No features loaded for this body." : "No features match your search."}</div>
         ) : (
