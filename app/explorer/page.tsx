@@ -29,6 +29,7 @@ function ExplorerContent() {
   // Advanced settings state
   const [selectedDataset, setSelectedDataset] = useState<string>("default");
   const [splitViewEnabled, setSplitViewEnabled] = useState(false);
+  const [splitLayerId, setSplitLayerId] = useState<string>("");
   const [osdToolbarVisible, setOsdToolbarVisible] = useState(false);
 
   // Load advanced settings from localStorage
@@ -36,6 +37,7 @@ function ExplorerContent() {
     const storedAdvancedOpen = localStorage.getItem('pe_advanced_open');
     const storedDataset = localStorage.getItem('pe_dataset');
     const storedSplitView = localStorage.getItem('pe_split_view');
+    const storedSplitLayer = localStorage.getItem('pe_split_layer');
     const storedOsdToolbar = localStorage.getItem('pe_osd_toolbar');
     
     if (storedAdvancedOpen === 'true') {
@@ -46,6 +48,9 @@ function ExplorerContent() {
     }
     if (storedSplitView === 'true') {
       setSplitViewEnabled(true);
+    }
+    if (storedSplitLayer) {
+      setSplitLayerId(storedSplitLayer);
     }
     if (storedOsdToolbar === 'true') {
       setOsdToolbarVisible(true);
@@ -64,6 +69,10 @@ function ExplorerContent() {
   useEffect(() => {
     localStorage.setItem('pe_split_view', splitViewEnabled.toString());
   }, [splitViewEnabled]);
+  
+  useEffect(() => {
+    localStorage.setItem('pe_split_layer', splitLayerId);
+  }, [splitLayerId]);
   
   useEffect(() => {
     localStorage.setItem('pe_osd_toolbar', osdToolbarVisible.toString());
@@ -173,6 +182,7 @@ function ExplorerContent() {
             initialZoom={navigationParams.zoom}
             selectedDataset={selectedDataset}
             splitViewEnabled={splitViewEnabled}
+            splitLayerId={splitLayerId}
             osdToolbarVisible={osdToolbarVisible}
             onFeatureSelected={(feature) => {
               console.log('[Explorer] Reverse search feature selected:', feature);
@@ -216,9 +226,12 @@ function ExplorerContent() {
         onClose={() => setShowAdvanced(false)}
         onDatasetChange={setSelectedDataset}
         onSplitViewToggle={setSplitViewEnabled}
+        onSplitLayerChange={setSplitLayerId}
         onOsdToolbarToggle={setOsdToolbarVisible}
         currentDataset={selectedDataset}
+        currentBody={selectedBody}
         splitViewEnabled={splitViewEnabled}
+        splitLayerId={splitLayerId}
         osdToolbarVisible={osdToolbarVisible}
       />
 

@@ -261,6 +261,7 @@ interface TileViewerProps {
   hideUI?: boolean;
   selectedDataset?: string;
   splitViewEnabled?: boolean;
+  splitLayerId?: string;
   osdToolbarVisible?: boolean;
   onFeatureSelected?: (feature: any) => void;
 }
@@ -275,6 +276,7 @@ export default function TileViewer({
   hideUI = false,
   selectedDataset,
   splitViewEnabled,
+  splitLayerId,
   osdToolbarVisible,
   onFeatureSelected
 }: TileViewerProps) {
@@ -308,6 +310,29 @@ export default function TileViewer({
       console.log('[TileViewer3] View mode changed:', splitViewEnabled ? "split" : "single");
     }
   }, [splitViewEnabled]);
+  
+  // Sync split layer selection with parent prop
+  useEffect(() => {
+    if (splitLayerId !== undefined) {
+      setSelectedOverlayId(splitLayerId);
+      console.log('[TileViewer3] Split layer changed:', splitLayerId);
+    }
+  }, [splitLayerId]);
+  
+  // Sync dataset selection with parent prop
+  useEffect(() => {
+    if (selectedDataset && selectedDataset !== "default") {
+      // Dataset is in format "body:layerId", set it directly
+      if (selectedDataset.includes(":")) {
+        setSelectedLayerId(selectedDataset);
+      } else {
+        // Legacy format - try to infer body from current selection
+        const fullId = `${selectedBody}:${selectedDataset}`;
+        setSelectedLayerId(fullId);
+      }
+      console.log('[TileViewer3] Dataset changed:', selectedDataset);
+    }
+  }, [selectedDataset, selectedBody]);
   const [searchText, setSearchText] = useState<string>(externalSearchQuery ?? "");
   const [isSearching, setIsSearching] = useState(false);
   const [showInfoPanel, setShowInfoPanel] = useState(false);
@@ -991,6 +1016,28 @@ export default function TileViewer({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBody, selectedLayerId, selectedOverlayId, viewMode, selectedDate, layerConfig]);
 
+  // Update OSD toolbar visibility dynamically
+  useEffect(() => {
+    if (viewerObjRef.current) {
+      if (viewerObjRef.current.navigator?.element) {
+        viewerObjRef.current.navigator.element.style.display = osdToolbarVisible ? 'block' : 'none';
+      }
+      if (viewerObjRef.current.zoomInButton?.element) {
+        viewerObjRef.current.zoomInButton.element.style.display = osdToolbarVisible ? 'block' : 'none';
+      }
+      if (viewerObjRef.current.zoomOutButton?.element) {
+        viewerObjRef.current.zoomOutButton.element.style.display = osdToolbarVisible ? 'block' : 'none';
+      }
+      if (viewerObjRef.current.homeButton?.element) {
+        viewerObjRef.current.homeButton.element.style.display = osdToolbarVisible ? 'block' : 'none';
+      }
+      if (viewerObjRef.current.fullPageButton?.element) {
+        viewerObjRef.current.fullPageButton.element.style.display = osdToolbarVisible ? 'block' : 'none';
+      }
+      console.log('[TileViewer3] OSD toolbar visibility changed:', osdToolbarVisible);
+    }
+  }, [osdToolbarVisible]);
+
   // Update overlay opacity when it changes
   useEffect(() => {
     if (viewMode !== "overlay") return;
@@ -1343,24 +1390,30 @@ export default function TileViewer({
     const x = (lon / 360) * imgW;
     const y = ((90 - lat) / 180) * imgH;
 
-    // Add marker
+    // Add marker with Lucide MapPin icon
     try {
       const marker = document.createElement("div");
       marker.style.cssText = `
-        width: 20px;
-        height: 20px;
-        background: #ff6b6b;
-        border: 2px solid white;
-        border-radius: 50%;
-        transform: translate(-50%, -50%);
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        width: 32px;
+        height: 32px;
+        transform: translate(-50%, -100%);
         z-index: 100;
+        position: relative;
+      `;
+      
+      // Create pin icon using SVG (Lucide MapPin)
+      marker.innerHTML = `
+        <div style="position: absolute; inset: 0; margin: -8px; border-radius: 50%; background: rgba(59, 130, 246, 0.3); animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="rgb(59, 130, 246)" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="position: relative; z-index: 10; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.3));">
+          <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/>
+          <circle cx="12" cy="10" r="3"/>
+        </svg>
       `;
 
       v.addOverlay({
         element: marker,
         location: v.viewport.imageToViewportCoordinates(x, y),
-        placement: "CENTER",
+        placement: "TOP_LEFT",
         checkResize: false,
       });
       

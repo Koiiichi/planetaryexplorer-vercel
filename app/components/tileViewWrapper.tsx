@@ -14,6 +14,7 @@ interface TileViewerWrapperProps {
   hideUI?: boolean;
   selectedDataset?: string;
   splitViewEnabled?: boolean;
+  splitLayerId?: string;
   osdToolbarVisible?: boolean;
   onFeatureSelected?: (feature: any) => void;
 }
@@ -27,6 +28,7 @@ export default function TileViewerWrapper({
   hideUI = true,
   selectedDataset,
   splitViewEnabled,
+  splitLayerId,
   osdToolbarVisible,
   onFeatureSelected
 }: TileViewerWrapperProps) {
@@ -54,6 +56,7 @@ export default function TileViewerWrapper({
       hideUI={hideUI}
       selectedDataset={selectedDataset}
       splitViewEnabled={splitViewEnabled}
+      splitLayerId={splitLayerId}
       osdToolbarVisible={osdToolbarVisible}
       onFeatureSelected={onFeatureSelected}
     />

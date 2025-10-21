@@ -1,16 +1,19 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Settings, X, Layers, Square } from "lucide-react";
+import { Settings, X, Layers, Square, Eye } from "lucide-react";
 
 interface AdvancedDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   onDatasetChange?: (dataset: string) => void;
   onSplitViewToggle?: (enabled: boolean) => void;
+  onSplitLayerChange?: (layerId: string) => void;
   onOsdToolbarToggle?: (visible: boolean) => void;
   currentDataset?: string;
+  currentBody?: string;
   splitViewEnabled?: boolean;
+  splitLayerId?: string;
   osdToolbarVisible?: boolean;
 }
 
@@ -19,32 +22,69 @@ export default function AdvancedDrawer({
   onClose,
   onDatasetChange,
   onSplitViewToggle,
+  onSplitLayerChange,
   onOsdToolbarToggle,
   currentDataset = "default",
+  currentBody = "moon",
   splitViewEnabled = false,
+  splitLayerId = "",
   osdToolbarVisible = false,
 }: AdvancedDrawerProps) {
   const [localDataset, setLocalDataset] = useState(currentDataset);
   const [localSplitView, setLocalSplitView] = useState(splitViewEnabled);
+  const [localSplitLayer, setLocalSplitLayer] = useState(splitLayerId);
   const [localOsdToolbar, setLocalOsdToolbar] = useState(osdToolbarVisible);
 
   useEffect(() => {
     if (isOpen) {
       setLocalDataset(currentDataset);
       setLocalSplitView(splitViewEnabled);
+      setLocalSplitLayer(splitLayerId);
       setLocalOsdToolbar(osdToolbarVisible);
     }
-  }, [isOpen, currentDataset, splitViewEnabled, osdToolbarVisible]);
+  }, [isOpen, currentDataset, splitViewEnabled, splitLayerId, osdToolbarVisible]);
 
   if (!isOpen) return null;
 
+  // Layer definitions by body
+  const layersByBody: Record<string, Array<{ id: string; name: string; type: "base" | "overlay" }>> = {
+    moon: [
+      { id: "lro_wac_global", name: "LRO WAC Global Mosaic", type: "base" },
+      { id: "lro_nac_apollo", name: "LRO NAC Apollo Sites", type: "base" },
+      { id: "lro_lola_elevation", name: "LOLA Elevation", type: "overlay" },
+      { id: "lro_diviner_rock", name: "Diviner Rock Abundance", type: "overlay" },
+      { id: "grail_gravity", name: "GRAIL Gravity Field", type: "overlay" },
+    ],
+    mars: [
+      { id: "mars_mgs_mola", name: "MGS MOLA Shaded Relief", type: "base" },
+      { id: "mars_viking_mosaic", name: "Viking MDIM 2.1", type: "base" },
+      { id: "mars_hirise", name: "HiRISE High Resolution", type: "overlay" },
+      { id: "mars_ctx_mosaic", name: "CTX Global Mosaic", type: "overlay" },
+      { id: "mars_thermal_inertia", name: "TES Thermal Inertia", type: "overlay" },
+    ],
+    mercury: [
+      { id: "messenger_mdis_basemap", name: "MESSENGER MDIS Basemap", type: "base" },
+      { id: "messenger_global_mosaic", name: "MESSENGER Global Mosaic", type: "base" },
+      { id: "messenger_bdr", name: "MESSENGER BDR Mosaic", type: "base" },
+      { id: "messenger_elevation", name: "MLA Elevation Model", type: "overlay" },
+      { id: "messenger_slope", name: "MLA Slope Map", type: "overlay" },
+    ],
+    earth: [
+      { id: "openstreetmap", name: "OpenStreetMap", type: "base" },
+      { id: "satellite_arcgis", name: "ArcGIS World Imagery", type: "base" },
+      { id: "terrain_arcgis", name: "ArcGIS Terrain", type: "base" },
+    ],
+  };
+
+  const availableLayers = layersByBody[currentBody] || [];
+
   const datasets = [
-    { id: "lro_wac_global", name: "LRO WAC Global Mosaic", body: "moon" },
-    { id: "lro_wac_hybrid", name: "LRO WAC + Hillshade", body: "moon" },
-    { id: "mdim21_global", name: "Mars MDIM 2.1", body: "mars" },
-    { id: "mola_shaded", name: "Mars MOLA Shaded Relief", body: "mars" },
-    { id: "messenger_global", name: "MESSENGER MDIS Global", body: "mercury" },
-    { id: "messenger_enhanced", name: "MESSENGER Enhanced Color", body: "mercury" },
+    { id: "moon:lro_wac_global", name: "LRO WAC Global Mosaic", body: "moon" },
+    { id: "moon:lro_nac_apollo", name: "LRO NAC Apollo Sites", body: "moon" },
+    { id: "mars:mars_mgs_mola", name: "Mars MOLA Shaded Relief", body: "mars" },
+    { id: "mars:mars_viking_mosaic", name: "Mars Viking MDIM 2.1", body: "mars" },
+    { id: "mercury:messenger_mdis_basemap", name: "MESSENGER MDIS Basemap", body: "mercury" },
+    { id: "mercury:messenger_global_mosaic", name: "MESSENGER Global Mosaic", body: "mercury" },
   ];
 
   const handleDatasetChange = (datasetId: string) => {
@@ -58,6 +98,11 @@ export default function AdvancedDrawer({
     onSplitViewToggle?.(newValue);
   };
 
+  const handleSplitLayerChange = (layerId: string) => {
+    setLocalSplitLayer(layerId);
+    onSplitLayerChange?.(layerId);
+  };
+
   const handleOsdToolbarToggle = () => {
     const newValue = !localOsdToolbar;
     setLocalOsdToolbar(newValue);
@@ -65,7 +110,7 @@ export default function AdvancedDrawer({
   };
 
   return (
-    <div className="fixed left-6 bottom-6 w-full md:w-[360px] max-h-[70vh] overflow-y-auto glass-card z-50">
+    <div className="fixed left-6 bottom-6 w-full md:w-[360px] max-h-[70vh] glass-card z-50">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Settings size={20} className="text-white/90" />
@@ -80,7 +125,7 @@ export default function AdvancedDrawer({
         </button>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-4 overflow-y-auto max-h-[calc(70vh-100px)]">
         {/* Dataset Chooser */}
         <div>
           <div className="flex items-center gap-2 text-white/90 mb-2">
@@ -126,13 +171,38 @@ export default function AdvancedDrawer({
               />
             </button>
           </div>
+
+          {/* Split View Layer Selection */}
+          {localSplitView && availableLayers.length > 0 && (
+            <div className="mt-2 pl-2">
+              <div className="text-xs text-white/70 mb-2">Compare Layer:</div>
+              <div className="space-y-1 max-h-40 overflow-y-auto">
+                {availableLayers.map((layer) => (
+                  <button
+                    key={layer.id}
+                    onClick={() => handleSplitLayerChange(layer.id)}
+                    className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors ${
+                      localSplitLayer === layer.id
+                        ? "bg-blue-500/30 text-white"
+                        : "bg-white/5 hover:bg-white/10 text-white/70"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span>{layer.name}</span>
+                      <span className="text-[10px] text-white/50 uppercase">{layer.type}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* OSD Toolbar Visibility */}
         <div>
           <div className="flex items-center justify-between py-2 px-3 bg-white/5 rounded-lg hover:bg-white/10 transition-colors">
             <div className="flex items-center gap-2 text-white/90">
-              <Settings size={16} />
+              <Eye size={16} />
               <span className="text-sm font-medium">OSD Toolbar</span>
             </div>
             <button
@@ -149,12 +219,6 @@ export default function AdvancedDrawer({
               />
             </button>
           </div>
-        </div>
-
-        <div className="pt-2 border-t border-white/10">
-          <p className="text-white/60 text-xs">
-            These settings control advanced visualization features. Changes are saved automatically.
-          </p>
         </div>
       </div>
     </div>
