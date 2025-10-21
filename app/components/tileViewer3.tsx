@@ -3,8 +3,8 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import JSZip from "jszip";
-// @ts-ignore - togeojson doesn't have types
-import toGeoJSON from "togeojson";
+// @ts-ignore - @mapbox/togeojson doesn't have types
+import toGeoJSON from "@mapbox/togeojson";
 import type { FeatureCollection, Point } from "geojson";
 import InfoPanel from './InfoPanel';
 
@@ -1074,12 +1074,8 @@ export default function TileViewer({
 
   // Enhanced search with backend integration
   async function searchWithBackend(query: string) {
-    if (!backendBase) {
-      throw new Error('Backend not available');
-    }
-    
     try {
-      const response = await fetch(`${backendBase}/search`, {
+      const response = await fetch('/api/search', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1128,7 +1124,7 @@ export default function TileViewer({
         console.log('No results found for query:', query);
       }
     } catch (error) {
-      console.error('Backend search error:', error);
+      console.error('Search API error:', error);
       throw error;
     }
   }

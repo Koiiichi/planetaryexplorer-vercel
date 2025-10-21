@@ -3,39 +3,40 @@ import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
   const url = searchParams.get('url');
 
   if (!url) {
-    return new NextResponse('Missing URL parameter', { status: 400 });
+    return new NextResponse('Missing url parameter', { status: 400 });
   }
 
   try {
+    // Fetch the tile from the external source
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'PlanetaryExplorer/1.0',
       },
     });
-    
+
     if (!response.ok) {
-      return new NextResponse(`KMZ fetch failed: ${response.status}`, { 
+      return new NextResponse(`Tile fetch failed: ${response.status}`, { 
         status: response.status 
       });
     }
-    
-    const arrayBuffer = await response.arrayBuffer();
 
-    // Return the response with appropriate headers and caching
+    const arrayBuffer = await response.arrayBuffer();
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+
     return new NextResponse(arrayBuffer, {
       headers: {
-        'Content-Type': 'application/vnd.google-earth.kmz',
+        'Content-Type': contentType,
         'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 's-maxage=86400, stale-while-revalidate=604800',
+        'Cache-Control': 's-maxage=86400, stale-while-revalidate',
       },
     });
   } catch (error) {
-    console.error('Error fetching KMZ:', error);
-    return new NextResponse('Failed to fetch KMZ', { status: 500 });
+    console.error('Tile proxy error:', error);
+    return new NextResponse('Failed to fetch tile', { status: 500 });
   }
 }
