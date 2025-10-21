@@ -1,0 +1,71 @@
+{
+  "largest_crater": {
+    "moon": {
+      "name": "Mare Imbrium",
+      "category": "Crater",
+      "lat": 34.7244,
+      "lon": -14.9086,
+      "diameter_km": 1123,
+      "body": "moon",
+      "layer_id": "moon_default"
+    },
+    "mars": {
+      "name": "Hellas Planitia",
+      "category": "Crater",
+      "lat": -42.4301,
+      "lon": 70.5025,
+      "diameter_km": 2300,
+      "body": "mars",
+      "layer_id": "mars_default"
+    },
+    "mercury": {
+      "name": "Caloris Planitia",
+      "category": "Crater",
+      "lat": 31.6525,
+      "lon": 161.9848,
+      "diameter_km": 1550,
+      "body": "mercury",
+      "layer_id": "mercury_default"
+    }
+  },
+  "largest_basin": {
+    "moon": {
+      "name": "Mare Imbrium",
+      "category": "Crater",
+      "lat": 34.7244,
+      "lon": -14.9086,
+      "diameter_km": 1123,
+      "body": "moon",
+      "layer_id": "moon_default"
+    },
+    "mars": {
+      "name": "Hellas Planitia",
+      "category": "Crater",
+      "lat": -42.4301,
+      "lon": 70.5025,
+      "diameter_km": 2300,
+      "body": "mars",
+      "layer_id": "mars_default"
+    },
+    "mercury": {
+      "name": "Caloris Planitia",
+      "category": "Crater",
+      "lat": 31.6525,
+      "lon": 161.9848,
+      "diameter_km": 1550,
+      "body": "mercury",
+      "layer_id": "mercury_default"
+    }
+  },
+  "largest_mountain": {
+    "mars": {
+      "name": "Olympus Mons",
+      "category": "Mons",
+      "lat": 18.65,
+      "lon": 226.2,
+      "diameter_km": 624,
+      "body": "mars",
+      "layer_id": "mars_default"
+    }
+  }
+}
