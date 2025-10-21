@@ -1,0 +1,30 @@
+{
+  "characterNormalization": {
+    "ē": "e",
+    "ū": "u",
+    "ī": "i",
+    "ō": "o",
+    "ā": "a"
+  },
+  "featureTypeSynonyms": {
+    "crater": ["crater", "craters", "basin", "basins"],
+    "mons": ["mountain", "mountains", "mons", "montes", "mount"],
+    "montes": ["mountain", "mountains", "mons", "montes", "mount"],
+    "planitia": ["plain", "plains", "planitia"],
+    "vallis": ["valley", "valleys", "vallis", "valles"],
+    "mare": ["sea", "seas", "mare", "maria"],
+    "dorsum": ["ridge", "ridges", "dorsum", "dorsa"]
+  },
+  "bodyAliases": {
+    "moon": ["moon", "lunar", "selene"],
+    "mars": ["mars", "martian"],
+    "mercury": ["mercury", "hermian"]
+  },
+  "superlativePatterns": [
+    "largest crater",
+    "biggest crater",
+    "largest basin",
+    "biggest basin",
+    "largest impact"
+  ]
+}

@@ -296,6 +296,9 @@ export default function TileViewer({
   const [isSearching, setIsSearching] = useState(false);
   const [showInfoPanel, setShowInfoPanel] = useState(false);
   const [selectedFeature, setSelectedFeature] = useState<any>(null);
+  const [searchProvider, setSearchProvider] = useState<string | undefined>();
+  const [aiDescription, setAiDescription] = useState<string | undefined>();
+  const [searchSuggestions, setSearchSuggestions] = useState<Array<{ name: string; body: string; category: string }>>([]);
 
   console.log('[TileViewer3 RENDER] initialBody:', initialBody, 'selectedBody:', selectedBody, 'selectedLayerId:', selectedLayerId, 'hasExternalBodySynced:', hasExternalBodySynced.current);
 
@@ -1090,15 +1093,16 @@ export default function TileViewer({
       const result = await response.json();
       
       if (result.found) {
-        // Navigate to the found location with flyTo animation
-        const { body, center, feature } = result;
+        const { body, center, feature, provider, ai_description } = result;
         
-        // Set the body to match the search result
         if (body !== selectedBody) {
           setSelectedBody(body);
         }
         
-        // Create feature for display
+        setSearchProvider(provider);
+        setAiDescription(ai_description);
+        setSearchSuggestions([]);
+        
         const searchFeature = {
           name: feature.name,
           lat: center.lat,
@@ -1109,7 +1113,6 @@ export default function TileViewer({
         
         setFeatures([searchFeature]);
         
-        // Fly to the location
         setTimeout(() => {
           flyToLocation(center.lon, center.lat, 6, searchFeature);
         }, 1000);
@@ -1117,11 +1120,14 @@ export default function TileViewer({
         console.log('ui.flow', 'search_completed', {
           query,
           result: feature.name,
-          provider: result.provider || 'unknown'
+          provider: provider || 'unknown'
         });
       } else {
         setFeatures([]);
-        console.log('No results found for query:', query);
+        setSearchProvider(undefined);
+        setAiDescription(undefined);
+        setSearchSuggestions(result.suggestions || []);
+        console.log('No results found for query:', query, 'Suggestions:', result.suggestions?.length || 0);
       }
     } catch (error) {
       console.error('Search API error:', error);
@@ -1594,7 +1600,40 @@ export default function TileViewer({
         isOpen={showInfoPanel}
         onClose={() => setShowInfoPanel(false)}
         feature={selectedFeature}
+        provider={searchProvider}
+        aiDescription={aiDescription}
       />
+      
+      {/* Search Suggestions */}
+      {searchSuggestions.length > 0 && !showInfoPanel && (
+        <div className="fixed top-24 right-4 w-80 bg-gray-900/95 backdrop-blur-xl rounded-lg border border-white/20 shadow-2xl z-40 p-4">
+          <div className="text-white/60 text-sm mb-2">Did you mean:</div>
+          <div className="space-y-2">
+            {searchSuggestions.map((suggestion, idx) => (
+              <button
+                key={idx}
+                onClick={async () => {
+                  const suggestedQuery = suggestion.name;
+                  setSearchText(suggestedQuery);
+                  setSearchSuggestions([]);
+                  if (onSearchChange) {
+                    onSearchChange(suggestedQuery);
+                  }
+                  try {
+                    await searchWithBackend(suggestedQuery);
+                  } catch (err) {
+                    console.error('Failed to search suggestion:', err);
+                  }
+                }}
+                className="w-full text-left px-3 py-2 bg-white/10 hover:bg-white/20 rounded text-white/80 hover:text-white transition-colors text-sm"
+              >
+                <div className="font-medium">{suggestion.name}</div>
+                <div className="text-xs text-white/60 capitalize">{suggestion.category} on {suggestion.body}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

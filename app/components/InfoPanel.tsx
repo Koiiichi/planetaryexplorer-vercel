@@ -1,7 +1,7 @@
 "use client";
 
 import React from 'react';
-import { X, MapPin, Globe, Ruler } from 'lucide-react';
+import { X, MapPin, Globe, Ruler, CheckCircle } from 'lucide-react';
 
 interface InfoPanelProps {
   isOpen: boolean;
@@ -15,19 +15,29 @@ interface InfoPanelProps {
     diameter_km?: number;
     keywords?: string[];
   } | null;
+  provider?: string;
+  aiDescription?: string;
 }
 
-export default function InfoPanel({ isOpen, onClose, feature }: InfoPanelProps) {
+export default function InfoPanel({ isOpen, onClose, feature, provider, aiDescription }: InfoPanelProps) {
   if (!isOpen || !feature) return null;
 
   return (
     <div className="fixed top-4 right-4 w-80 bg-gray-900/95 backdrop-blur-xl rounded-lg border border-white/20 shadow-2xl z-50">
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-white/10">
-        <h3 className="text-white font-semibold text-lg truncate">{feature.name}</h3>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-white font-semibold text-lg truncate">{feature.name}</h3>
+          {provider === 'fact' && (
+            <div className="flex items-center gap-1 text-xs text-green-400 mt-1">
+              <CheckCircle size={12} />
+              <span>Verified fact</span>
+            </div>
+          )}
+        </div>
         <button
           onClick={onClose}
-          className="text-white/60 hover:text-white transition-colors p-1 hover:bg-white/10 rounded"
+          className="text-white/60 hover:text-white transition-colors p-1 hover:bg-white/10 rounded flex-shrink-0 ml-2"
         >
           <X size={20} />
         </button>
@@ -62,6 +72,16 @@ export default function InfoPanel({ isOpen, onClose, feature }: InfoPanelProps) 
           <div className="flex items-center gap-2 text-white/80">
             <Ruler size={16} />
             <span>{feature.diameter_km.toFixed(1)} km diameter</span>
+          </div>
+        )}
+
+        {/* AI Description */}
+        {aiDescription && (
+          <div className="pt-2 border-t border-white/10">
+            <div className="text-white/60 text-xs mb-1">About</div>
+            <p className="text-white/80 text-sm leading-relaxed" data-pe-ai-desc>
+              {aiDescription}
+            </p>
           </div>
         )}
 

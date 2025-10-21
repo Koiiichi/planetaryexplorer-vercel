@@ -1,0 +1,35 @@
+{
+  "moon": {
+    "largest_crater": {
+      "name": "South Pole-Aitken Basin",
+      "category": "Crater",
+      "lat": -53.0,
+      "lon": -169.0,
+      "diameter_km": 2500.0,
+      "body": "moon",
+      "description": "The largest confirmed impact basin on the Moon"
+    }
+  },
+  "mars": {
+    "largest_crater": {
+      "name": "Hellas Planitia",
+      "category": "Planitia",
+      "lat": -42.4,
+      "lon": 70.5,
+      "diameter_km": 2300.0,
+      "body": "mars",
+      "description": "The largest visible impact basin on Mars"
+    }
+  },
+  "mercury": {
+    "largest_crater": {
+      "name": "Caloris Planitia",
+      "category": "Planitia",
+      "lat": 31.7,
+      "lon": 162.0,
+      "diameter_km": 1550.0,
+      "body": "mercury",
+      "description": "The largest impact basin on Mercury"
+    }
+  }
+}
