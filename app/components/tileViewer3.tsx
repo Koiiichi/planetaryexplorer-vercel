@@ -1437,7 +1437,10 @@ export default function TileViewer({
             </div>
           ) : (
             <>
-              <div ref={viewerRef} style={{ width: "100%", height: "100%", position: "absolute", left: 0, top: 0 }} />
+              <div ref={viewerRef} style={{ width: viewMode === "split" ? "50%" : "100%", height: "100%", position: "absolute", left: 0, top: 0 }} />
+              {(viewMode === "split" || viewMode === "overlay") && (
+                <div ref={compareViewerRef} style={{ width: viewMode === "split" ? "50%" : "100%", height: "100%", position: "absolute", right: 0, top: 0, pointerEvents: "auto" }} />
+              )}
             </>
           )}
         </div>
