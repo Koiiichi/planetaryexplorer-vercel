@@ -21,8 +21,66 @@ interface AiDescriptionState {
   error: Error | null;
 }
 
-// Cache to memoize descriptions by feature key
+// Cache to memoize descriptions by feature key with TTL
+interface CachedDescription {
+  description: string;
+  timestamp: number;
+}
+
+const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const CACHE_KEY = 'pe_ai_descriptions';
+
+// In-memory cache
 const descriptionCache = new Map<string, string>();
+
+// Load cache from localStorage on first use
+let cacheLoaded = false;
+function loadCacheFromStorage() {
+  if (cacheLoaded || typeof window === 'undefined') return;
+  cacheLoaded = true;
+  
+  try {
+    const stored = localStorage.getItem(CACHE_KEY);
+    if (!stored) return;
+    
+    const parsed: Record<string, CachedDescription> = JSON.parse(stored);
+    const now = Date.now();
+    let expiredCount = 0;
+    
+    for (const [key, cached] of Object.entries(parsed)) {
+      if (now - cached.timestamp < CACHE_TTL_MS) {
+        descriptionCache.set(key, cached.description);
+      } else {
+        expiredCount++;
+      }
+    }
+    
+    console.log(`[useAiDescription] Loaded ${descriptionCache.size} cached descriptions (${expiredCount} expired)`);
+  } catch (error) {
+    console.warn('[useAiDescription] Failed to load cache from localStorage:', error);
+  }
+}
+
+// Save cache to localStorage
+function saveCacheToStorage() {
+  if (typeof window === 'undefined') return;
+  
+  try {
+    const toStore: Record<string, CachedDescription> = {};
+    const now = Date.now();
+    
+    for (const [key, description] of descriptionCache.entries()) {
+      toStore[key] = {
+        description,
+        timestamp: now
+      };
+    }
+    
+    localStorage.setItem(CACHE_KEY, JSON.stringify(toStore));
+  } catch (error) {
+    console.warn('[useAiDescription] Failed to save cache to localStorage:', error);
+  }
+}
 
 /**
  * Hook to fetch AI-generated descriptions for planetary features
@@ -43,11 +101,13 @@ export function useAiDescription({
 
   useEffect(() => {
     if (!enabled || !meta) {
+      console.log('[useAiDescription] Skipped:', { enabled, hasMeta: !!meta, featureKey });
       return;
     }
 
     // If already cached, use cache
     if (descriptionCache.has(featureKey)) {
+      console.log('[useAiDescription] Using cached description for:', featureKey);
       setState({
         description: descriptionCache.get(featureKey) || null,
         isLoading: false,
@@ -57,6 +117,7 @@ export function useAiDescription({
     }
 
     // Start fetching
+    console.log('[useAiDescription] Starting fetch for:', featureKey);
     setState(prev => ({ ...prev, isLoading: true, error: null }));
 
     // Cancel previous request if any
@@ -70,10 +131,14 @@ export function useAiDescription({
     const fetchDescription = async () => {
       try {
         const prompt = buildPrompt(meta);
-        const apiKey = process.env.NEXT_PUBLIC_DEEPSEEK_API_KEY;
+        
+        // Try to get API key from environment (client-side Next.js uses NEXT_PUBLIC_ prefix)
+        const apiKey = process.env.NEXT_PUBLIC_DEEPSEEK_API_KEY || 
+                       (typeof window !== 'undefined' && (window as any).__DEEPSEEK_KEY__);
 
         if (!apiKey) {
-          // Silently fail if no API key configured
+          // Silently fail if no API key configured - use fallback description
+          console.info('[useAiDescription] No API key configured, skipping AI description');
           setState({
             description: null,
             isLoading: false,
@@ -81,6 +146,8 @@ export function useAiDescription({
           });
           return;
         }
+        
+        console.log('[useAiDescription] Fetching description for:', featureKey);
 
         const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
           method: 'POST',
@@ -115,6 +182,8 @@ export function useAiDescription({
 
         if (description) {
           descriptionCache.set(featureKey, description);
+          // Persist to localStorage
+          saveCacheToStorage();
         }
 
         if (!controller.signal.aborted) {

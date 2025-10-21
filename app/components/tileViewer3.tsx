@@ -259,6 +259,10 @@ interface TileViewerProps {
   initialLon?: number;
   initialZoom?: number;
   hideUI?: boolean;
+  selectedDataset?: string;
+  splitViewEnabled?: boolean;
+  osdToolbarVisible?: boolean;
+  onFeatureSelected?: (feature: any) => void;
 }
 
 export default function TileViewer({ 
@@ -268,7 +272,11 @@ export default function TileViewer({
   initialLat,
   initialLon,
   initialZoom,
-  hideUI = false
+  hideUI = false,
+  selectedDataset,
+  splitViewEnabled,
+  osdToolbarVisible,
+  onFeatureSelected
 }: TileViewerProps) {
   // refs and viewer instances
   const viewerRef = useRef<HTMLDivElement | null>(null);
@@ -292,6 +300,14 @@ export default function TileViewer({
   const [viewMode, setViewMode] = useState<"single" | "split" | "overlay">("single");
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [features, setFeatures] = useState<PlanetFeature[]>([]);
+  
+  // Sync split view mode with parent prop
+  useEffect(() => {
+    if (splitViewEnabled !== undefined) {
+      setViewMode(splitViewEnabled ? "split" : "single");
+      console.log('[TileViewer3] View mode changed:', splitViewEnabled ? "split" : "single");
+    }
+  }, [splitViewEnabled]);
   const [searchText, setSearchText] = useState<string>(externalSearchQuery ?? "");
   const [isSearching, setIsSearching] = useState(false);
   const [showInfoPanel, setShowInfoPanel] = useState(false);
@@ -794,10 +810,10 @@ export default function TileViewer({
           element: viewerRef.current,
           prefixUrl: "https://cdn.jsdelivr.net/npm/openseadragon@latest/build/openseadragon/images/",
           tileSources: [tileSource],
-          showNavigator: false,  // Hide by default for cleaner interface
-          showZoomControl: false,
-          showHomeControl: false, 
-          showFullPageControl: false,
+          showNavigator: osdToolbarVisible || false,  // Controlled by Advanced settings
+          showZoomControl: osdToolbarVisible || false,
+          showHomeControl: osdToolbarVisible || false, 
+          showFullPageControl: osdToolbarVisible || false,
           gestureSettingsMouse: { clickToZoom: false },
           constrainDuringPan: true,
           homeFillsViewer: true,
@@ -812,6 +828,27 @@ export default function TileViewer({
         // Add overlays (like center crosshair) when open
         mainViewer.addHandler("open", function () {
           addCenterCrosshair(mainViewer);
+        });
+
+        // Add double-click handler for reverse search
+        mainViewer.addHandler("canvas-double-click", function (event: any) {
+          if (!event.quick) {
+            // Get viewport point from click position
+            const viewportPoint = mainViewer.viewport.pointFromPixel(event.position);
+            const imagePoint = mainViewer.viewport.viewportToImageCoordinates(viewportPoint);
+            
+            // Convert to lat/lon
+            const imageWidth = mainViewer.world.getItemAt(0).source.dimensions.x;
+            const imageHeight = mainViewer.world.getItemAt(0).source.dimensions.y;
+            
+            const lon = (imagePoint.x / imageWidth) * 360 - 180;
+            const lat = 90 - (imagePoint.y / imageHeight) * 180;
+            
+            console.log('[Reverse Search] Double-click at:', { lat, lon, body: selectedBody });
+            
+            // Find nearest feature
+            handleReverseSearch(lat, lon, selectedBody);
+          }
         });
 
         // If split or overlay mode, create compare viewer
@@ -1205,6 +1242,74 @@ export default function TileViewer({
     } catch (err) {
       console.error("addCenterCrosshair error:", err);
     }
+  }
+
+  // Reverse search: find nearest feature to clicked coordinates
+  function handleReverseSearch(lat: number, lon: number, body: string) {
+    console.log('[Reverse Search] Finding nearest feature to:', { lat, lon, body });
+    
+    if (features.length === 0) {
+      console.warn('[Reverse Search] No features loaded for', body);
+      // Show a helpful message
+      setShowInfoPanel(false);
+      return;
+    }
+
+    // Calculate distance between two lat/lon points (Haversine formula)
+    const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+      const R = 6371; // Earth radius in km (approximate for all bodies)
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = 
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    };
+
+    // Find nearest feature
+    let nearestFeature = features[0];
+    let minDistance = calculateDistance(lat, lon, features[0].lat, features[0].lon);
+
+    for (const feature of features) {
+      const distance = calculateDistance(lat, lon, feature.lat, feature.lon);
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearestFeature = feature;
+      }
+    }
+
+    console.log('[Reverse Search] Nearest feature:', nearestFeature.name, 'distance:', minDistance.toFixed(2), 'km');
+
+    // Show feature in info panel (if not using glass UI)
+    if (process.env.NEXT_PUBLIC_ENABLE_LEGACY_UI === 'true') {
+      setSelectedFeature({
+        name: nearestFeature.name,
+        lat: nearestFeature.lat,
+        lon: nearestFeature.lon,
+        category: 'Feature',
+        diameter_km: nearestFeature.diamkm,
+        body: body,
+      });
+      setSearchProvider('reverse_search');
+      setShowInfoPanel(true);
+    } else {
+      // For glass UI, communicate with parent to show ResultCard
+      const featureData = {
+        name: nearestFeature.name,
+        lat: nearestFeature.lat,
+        lon: nearestFeature.lon,
+        category: 'Feature',
+        diameter_km: nearestFeature.diamkm,
+        body: body,
+      };
+      console.info('[Reverse Search] Feature found:', nearestFeature.name, '- notifying parent');
+      onFeatureSelected?.(featureData);
+    }
+
+    // Fly to the feature
+    flyToLocation(nearestFeature.lon, nearestFeature.lat, 6, nearestFeature);
   }
 
   // Enhanced navigation with animation and info panel

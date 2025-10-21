@@ -71,10 +71,10 @@ export default function HUD({
   };
 
   return (
-    <div className="fixed top-6 right-6 z-50 flex flex-col gap-3">
-      {/* Home button - top left */}
-      {showHomeButton && (
-        <div className="fixed top-6 left-6 z-50">
+    <>
+      {/* Top-left controls: Home + Advanced */}
+      <div className="fixed top-6 left-6 z-50 flex items-center gap-3">
+        {showHomeButton && (
           <button
             onClick={() => router.push('/')}
             className="glass-bar flex items-center gap-2 px-4 py-2 text-white/70 hover:text-white transition-all hover:bg-white/15"
@@ -83,9 +83,26 @@ export default function HUD({
             <Home size={18} />
             <span className="text-sm font-medium">Home</span>
           </button>
-        </div>
-      )}
+        )}
 
+        {showAdvancedButton && (
+          <button
+            onClick={onAdvancedToggle}
+            className={`glass-bar flex items-center gap-2 px-4 py-2 transition-all ${
+              advancedOpen
+                ? "bg-white/20 text-white"
+                : "text-white/70 hover:text-white hover:bg-white/15"
+            }`}
+            title="Advanced Settings"
+          >
+            <Settings size={18} />
+            <span className="text-sm font-medium">Advanced</span>
+          </button>
+        )}
+      </div>
+
+      {/* Top-right controls: Body selector + Zoom */}
+      <div className="fixed top-6 right-6 z-50 flex flex-col gap-3">
       {showBodySelector && (
         <div className="glass-bar flex items-center gap-2">
           {["Moon", "Mars", "Mercury"].map((body) => (
@@ -104,22 +121,6 @@ export default function HUD({
             </button>
           ))}
         </div>
-      )}
-
-      {/* Advanced settings toggle */}
-      {showAdvancedButton && (
-        <button
-          onClick={onAdvancedToggle}
-          className={`glass-bar flex items-center gap-2 px-4 py-2 transition-all ${
-            advancedOpen
-              ? "bg-white/20 text-white"
-              : "text-white/70 hover:text-white hover:bg-white/15"
-          }`}
-          title="Advanced Settings"
-        >
-          <Settings size={18} />
-          <span className="text-sm font-medium">Advanced</span>
-        </button>
       )}
 
       {showZoomControls && (
@@ -141,6 +142,7 @@ export default function HUD({
           </button>
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }

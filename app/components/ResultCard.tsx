@@ -34,11 +34,17 @@ export default function ResultCard({
   const { description: hookDescription, isLoading: isLoadingDescription } = useAiDescription({
     featureKey,
     meta: feature || undefined,
+    // Always try to fetch if no valid server description
     enabled: isOpen && !!feature && !serverAiDescription
   });
 
   // Prefer server description, fallback to hook description
   const aiDescription = serverAiDescription || hookDescription;
+  
+  // Debug logging
+  if (isOpen && feature) {
+    console.log('[ResultCard] Feature:', feature.name, 'Server AI:', !!serverAiDescription, 'Hook AI:', !!hookDescription, 'Loading:', isLoadingDescription);
+  }
 
   if (!isOpen || !feature) return null;
 

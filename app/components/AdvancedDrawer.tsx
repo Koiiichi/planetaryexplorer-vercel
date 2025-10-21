@@ -65,7 +65,7 @@ export default function AdvancedDrawer({
   };
 
   return (
-    <div className="fixed right-6 bottom-6 w-full md:w-[360px] max-h-[70vh] overflow-y-auto glass-card z-50">
+    <div className="fixed left-6 bottom-6 w-full md:w-[360px] max-h-[70vh] overflow-y-auto glass-card z-50">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Settings size={20} className="text-white/90" />

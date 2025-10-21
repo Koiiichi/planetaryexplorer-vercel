@@ -12,6 +12,10 @@ interface TileViewerWrapperProps {
   initialLon?: number;
   initialZoom?: number;
   hideUI?: boolean;
+  selectedDataset?: string;
+  splitViewEnabled?: boolean;
+  osdToolbarVisible?: boolean;
+  onFeatureSelected?: (feature: any) => void;
 }
 
 export default function TileViewerWrapper({ 
@@ -20,7 +24,11 @@ export default function TileViewerWrapper({
   initialLat, 
   initialLon, 
   initialZoom,
-  hideUI = true
+  hideUI = true,
+  selectedDataset,
+  splitViewEnabled,
+  osdToolbarVisible,
+  onFeatureSelected
 }: TileViewerWrapperProps) {
   const router = useRouter();
 
@@ -44,6 +52,10 @@ export default function TileViewerWrapper({
       initialLon={initialLon}
       initialZoom={initialZoom}
       hideUI={hideUI}
+      selectedDataset={selectedDataset}
+      splitViewEnabled={splitViewEnabled}
+      osdToolbarVisible={osdToolbarVisible}
+      onFeatureSelected={onFeatureSelected}
     />
   );
 }

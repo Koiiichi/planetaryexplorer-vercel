@@ -25,12 +25,30 @@ function ExplorerContent() {
     zoom?: number;
   }>({});
   const [showAdvanced, setShowAdvanced] = useState(false);
+  
+  // Advanced settings state
+  const [selectedDataset, setSelectedDataset] = useState<string>("default");
+  const [splitViewEnabled, setSplitViewEnabled] = useState(false);
+  const [osdToolbarVisible, setOsdToolbarVisible] = useState(false);
 
   // Load advanced settings from localStorage
   useEffect(() => {
     const storedAdvancedOpen = localStorage.getItem('pe_advanced_open');
+    const storedDataset = localStorage.getItem('pe_dataset');
+    const storedSplitView = localStorage.getItem('pe_split_view');
+    const storedOsdToolbar = localStorage.getItem('pe_osd_toolbar');
+    
     if (storedAdvancedOpen === 'true') {
       setShowAdvanced(true);
+    }
+    if (storedDataset) {
+      setSelectedDataset(storedDataset);
+    }
+    if (storedSplitView === 'true') {
+      setSplitViewEnabled(true);
+    }
+    if (storedOsdToolbar === 'true') {
+      setOsdToolbarVisible(true);
     }
   }, []);
 
@@ -38,6 +56,18 @@ function ExplorerContent() {
   useEffect(() => {
     localStorage.setItem('pe_advanced_open', showAdvanced.toString());
   }, [showAdvanced]);
+  
+  useEffect(() => {
+    localStorage.setItem('pe_dataset', selectedDataset);
+  }, [selectedDataset]);
+  
+  useEffect(() => {
+    localStorage.setItem('pe_split_view', splitViewEnabled.toString());
+  }, [splitViewEnabled]);
+  
+  useEffect(() => {
+    localStorage.setItem('pe_osd_toolbar', osdToolbarVisible.toString());
+  }, [osdToolbarVisible]);
 
   useEffect(() => {
     const query = searchParams.get('search');
@@ -141,13 +171,21 @@ function ExplorerContent() {
             initialLat={navigationParams.lat}
             initialLon={navigationParams.lon}
             initialZoom={navigationParams.zoom}
+            selectedDataset={selectedDataset}
+            splitViewEnabled={splitViewEnabled}
+            osdToolbarVisible={osdToolbarVisible}
+            onFeatureSelected={(feature) => {
+              console.log('[Explorer] Reverse search feature selected:', feature);
+              setSearchResult(feature);
+              setShowResultCard(true);
+            }}
           />
         </div>
       </div>
 
       {/* Search bar overlay */}
-      <div className="fixed top-5 left-1/2 -translate-x-1/2 w-full px-4 z-50">
-        <div className="mx-auto max-w-[720px] md:max-w-[640px] sm:max-w-[520px]">
+      <div className="fixed top-5 left-1/2 -translate-x-1/2 w-full px-4 z-40">
+        <div className="mx-auto max-w-[520px] md:max-w-[480px] sm:max-w-[420px]">
           <SearchBar
             value={searchQuery}
             onSearch={handleSearch}
@@ -176,9 +214,12 @@ function ExplorerContent() {
       <AdvancedDrawer
         isOpen={showAdvanced}
         onClose={() => setShowAdvanced(false)}
-        onDatasetChange={(dataset) => console.log('Dataset changed:', dataset)}
-        onSplitViewToggle={(enabled) => console.log('Split view:', enabled)}
-        onOsdToolbarToggle={(visible) => console.log('OSD toolbar:', visible)}
+        onDatasetChange={setSelectedDataset}
+        onSplitViewToggle={setSplitViewEnabled}
+        onOsdToolbarToggle={setOsdToolbarVisible}
+        currentDataset={selectedDataset}
+        splitViewEnabled={splitViewEnabled}
+        osdToolbarVisible={osdToolbarVisible}
       />
 
       {/* Result card overlay */}
