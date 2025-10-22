@@ -3,6 +3,10 @@
 
 Project Link: https://planetaryexplorer.vercel.app/
 
+This repository is a fork of the original team project at https://github.com/ketjandr/nasa-spaceapps-project.  
+It includes updates made after the hackathon, such as deployment support, backend refinements, and UI improvements.  
+The fork also serves as the basis for the official Vercel deployment linked above.
+
 ## Run
 1) `cp .env.example .env.local` and set:
    - `NEXT_PUBLIC_BACKEND_URL` if you expose FastAPI somewhere else
