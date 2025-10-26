@@ -31,6 +31,8 @@ function ExplorerContent() {
   const [splitViewEnabled, setSplitViewEnabled] = useState(false);
   const [splitLayerId, setSplitLayerId] = useState<string>("");
   const [osdToolbarVisible, setOsdToolbarVisible] = useState(false);
+  const [projectionDebugEnabled, setProjectionDebugEnabled] = useState(false);
+  const [longitudeDebugMode, setLongitudeDebugMode] = useState<"east-180" | "east-360">("east-180");
 
   // Load advanced settings from localStorage
   useEffect(() => {
@@ -39,6 +41,8 @@ function ExplorerContent() {
     const storedSplitView = localStorage.getItem('pe_split_view');
     const storedSplitLayer = localStorage.getItem('pe_split_layer');
     const storedOsdToolbar = localStorage.getItem('pe_osd_toolbar');
+    const storedProjectionDebug = localStorage.getItem('pe_projection_debug');
+    const storedLongitudeMode = localStorage.getItem('pe_longitude_mode');
     
     if (storedAdvancedOpen === 'true') {
       setShowAdvanced(true);
@@ -54,6 +58,12 @@ function ExplorerContent() {
     }
     if (storedOsdToolbar === 'true') {
       setOsdToolbarVisible(true);
+    }
+    if (storedProjectionDebug === 'true') {
+      setProjectionDebugEnabled(true);
+    }
+    if (storedLongitudeMode === 'east-360' || storedLongitudeMode === 'east-180') {
+      setLongitudeDebugMode(storedLongitudeMode);
     }
   }, []);
 
@@ -77,6 +87,14 @@ function ExplorerContent() {
   useEffect(() => {
     localStorage.setItem('pe_osd_toolbar', osdToolbarVisible.toString());
   }, [osdToolbarVisible]);
+
+  useEffect(() => {
+    localStorage.setItem('pe_projection_debug', projectionDebugEnabled.toString());
+  }, [projectionDebugEnabled]);
+
+  useEffect(() => {
+    localStorage.setItem('pe_longitude_mode', longitudeDebugMode);
+  }, [longitudeDebugMode]);
 
   useEffect(() => {
     const query = searchParams.get('search');
@@ -184,6 +202,8 @@ function ExplorerContent() {
             splitViewEnabled={splitViewEnabled}
             splitLayerId={splitLayerId}
             osdToolbarVisible={osdToolbarVisible}
+            projectionDebugEnabled={projectionDebugEnabled}
+            longitudeDebugMode={longitudeDebugMode}
             onFeatureSelected={(feature) => {
               console.log('[Explorer] Reverse search feature selected:', feature);
               setSearchResult(feature);
@@ -228,11 +248,15 @@ function ExplorerContent() {
         onSplitViewToggle={setSplitViewEnabled}
         onSplitLayerChange={setSplitLayerId}
         onOsdToolbarToggle={setOsdToolbarVisible}
+        onProjectionDebugToggle={setProjectionDebugEnabled}
+        onLongitudeDebugModeChange={setLongitudeDebugMode}
         currentDataset={selectedDataset}
         currentBody={selectedBody}
         splitViewEnabled={splitViewEnabled}
         splitLayerId={splitLayerId}
         osdToolbarVisible={osdToolbarVisible}
+        projectionDebugEnabled={projectionDebugEnabled}
+        longitudeDebugMode={longitudeDebugMode}
       />
 
       {/* Result card overlay */}

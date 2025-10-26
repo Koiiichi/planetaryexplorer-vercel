@@ -17,11 +17,13 @@ interface TileViewerWrapperProps {
   splitLayerId?: string;
   osdToolbarVisible?: boolean;
   onFeatureSelected?: (feature: any) => void;
+  projectionDebugEnabled?: boolean;
+  longitudeDebugMode?: "east-180" | "east-360";
 }
 
-export default function TileViewerWrapper({ 
-  searchQuery, 
-  initialBody, 
+export default function TileViewerWrapper({
+  searchQuery,
+  initialBody,
   initialLat, 
   initialLon, 
   initialZoom,
@@ -30,7 +32,9 @@ export default function TileViewerWrapper({
   splitViewEnabled,
   splitLayerId,
   osdToolbarVisible,
-  onFeatureSelected
+  onFeatureSelected,
+  projectionDebugEnabled,
+  longitudeDebugMode,
 }: TileViewerWrapperProps) {
   const router = useRouter();
 
@@ -59,6 +63,8 @@ export default function TileViewerWrapper({
       splitLayerId={splitLayerId}
       osdToolbarVisible={osdToolbarVisible}
       onFeatureSelected={onFeatureSelected}
+      projectionDebugEnabled={projectionDebugEnabled}
+      longitudeDebugMode={longitudeDebugMode}
     />
   );
 }

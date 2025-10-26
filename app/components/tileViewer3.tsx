@@ -7,6 +7,12 @@ import JSZip from "jszip";
 import toGeoJSON from "@mapbox/togeojson";
 import type { FeatureCollection, Point } from "geojson";
 import InfoPanel from './InfoPanel';
+import {
+  canonicalToDisplay,
+  normalizeLongitude,
+  wrapLongitude180,
+  formatLongitude,
+} from "../lib/coordinates";
 
 type BodyKey =
   | "earth"
@@ -41,6 +47,58 @@ type PlanetFeature = {
   lat: number;
   lon: number;
   diamkm?: number;
+};
+
+type LongitudeDebugMode = "east-180" | "east-360";
+
+type LongitudeConvention = {
+  direction: "east" | "west";
+  domain: "180" | "360";
+};
+
+const BODY_LONGITUDE_CONVENTIONS: Record<BodyKey, LongitudeConvention> = {
+  earth: { direction: "east", domain: "360" },
+  milky_way: { direction: "east", domain: "360" },
+  moon: { direction: "east", domain: "360" },
+  mars: { direction: "east", domain: "360" },
+  mercury: { direction: "east", domain: "360" },
+  ceres: { direction: "east", domain: "360" },
+  vesta: { direction: "east", domain: "360" },
+  unknown: { direction: "east", domain: "360" },
+};
+
+const BODY_RADII_KM: Record<BodyKey, number> = {
+  earth: 6371,
+  milky_way: 6371,
+  moon: 1737.4,
+  mars: 3389.5,
+  mercury: 2439.7,
+  ceres: 469.7,
+  vesta: 262.7,
+  unknown: 6371,
+};
+
+const REFERENCE_FEATURES: Record<BodyKey, Array<{ name: string; lat: number; lon: number }>> = {
+  earth: [],
+  milky_way: [],
+  moon: [
+    { name: "Tycho", lat: -43.31, lon: -11.36 },
+    { name: "Copernicus", lat: 9.62, lon: -20.08 },
+    { name: "Clavius", lat: -58.76, lon: -14.62 },
+  ],
+  mars: [
+    { name: "Olympus Mons", lat: 18.65, lon: normalizeLongitude(-134, { direction: "east", domain: "180" }) },
+    { name: "Valles Marineris", lat: -14.6, lon: normalizeLongitude(-75, { direction: "east", domain: "180" }) },
+    { name: "Gale Crater", lat: -5.4, lon: normalizeLongitude(137.8, { direction: "east", domain: "180" }) },
+  ],
+  mercury: [
+    { name: "Caloris Planitia", lat: 30.0, lon: normalizeLongitude(-160, { direction: "east", domain: "180" }) },
+    { name: "Rembrandt", lat: -33.0, lon: normalizeLongitude(-87.0, { direction: "east", domain: "180" }) },
+    { name: "Rachmaninoff", lat: 27.0, lon: normalizeLongitude(-57.0, { direction: "east", domain: "180" }) },
+  ],
+  ceres: [],
+  vesta: [],
+  unknown: [],
 };
 
 // --- local TREK templates (fallback / examples) ----------------------
@@ -264,10 +322,12 @@ interface TileViewerProps {
   splitLayerId?: string;
   osdToolbarVisible?: boolean;
   onFeatureSelected?: (feature: any) => void;
+  projectionDebugEnabled?: boolean;
+  longitudeDebugMode?: LongitudeDebugMode;
 }
 
-export default function TileViewer({ 
-  externalSearchQuery, 
+export default function TileViewer({
+  externalSearchQuery,
   onSearchChange,
   initialBody,
   initialLat,
@@ -278,13 +338,17 @@ export default function TileViewer({
   splitViewEnabled,
   splitLayerId,
   osdToolbarVisible,
-  onFeatureSelected
+  onFeatureSelected,
+  projectionDebugEnabled = false,
+  longitudeDebugMode = "east-180",
 }: TileViewerProps) {
   // refs and viewer instances
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const compareViewerRef = useRef<HTMLDivElement | null>(null);
   const viewerObjRef = useRef<any | null>(null);
   const compareViewerObjRef = useRef<any | null>(null);
+  const pulseOverlayRef = useRef<HTMLElement | null>(null);
+  const debugOverlaysRef = useRef<{ grid?: HTMLElement; markers: HTMLElement[] }>({ markers: [] });
   // Track whether external body has been synced at least once
   // If we have an external body prop at mount, consider it already synced
   const hasExternalBodySynced = useRef<boolean>(initialBody !== undefined);
@@ -733,6 +797,9 @@ export default function TileViewer({
 
     const cleanup = () => {
       try {
+        if (mainViewer) {
+          removeProjectionDebug(mainViewer);
+        }
         if (mainViewer) { mainViewer.destroy(); mainViewer = null; }
       } catch {
         // ignore
@@ -1016,6 +1083,58 @@ export default function TileViewer({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBody, selectedLayerId, selectedOverlayId, viewMode, selectedDate, layerConfig]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const ensureDebug = () => {
+      if (!projectionDebugEnabled) {
+        removeProjectionDebug();
+        return true;
+      }
+
+      const viewer = viewerObjRef.current;
+      if (!viewer) {
+        return false;
+      }
+
+      try {
+        attachProjectionDebug(viewer, selectedBody as BodyKey, longitudeDebugMode);
+        return true;
+      } catch (err) {
+        console.warn("Failed to attach projection debug overlays", err);
+        return false;
+      }
+    };
+
+    if (!ensureDebug() && projectionDebugEnabled) {
+      const interval = window.setInterval(() => {
+        if (cancelled) {
+          window.clearInterval(interval);
+          return;
+        }
+        if (ensureDebug()) {
+          window.clearInterval(interval);
+        }
+      }, 300);
+
+      return () => {
+        cancelled = true;
+        window.clearInterval(interval);
+        if (!projectionDebugEnabled) {
+          removeProjectionDebug();
+        }
+      };
+    }
+
+    return () => {
+      cancelled = true;
+      if (!projectionDebugEnabled) {
+        removeProjectionDebug();
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectionDebugEnabled, longitudeDebugMode, selectedBody, layerConfig]);
+
   // Update OSD toolbar visibility dynamically
   useEffect(() => {
     if (viewerObjRef.current) {
@@ -1078,7 +1197,7 @@ export default function TileViewer({
   // See Sources at the bottom for the official page link.
 
   // Fetch and parse a KMZ (USGS Gazetteer center points) and convert to GeoJSON (togeojson)
-  async function fetchGazetteerKMZ(kmzUrl: string): Promise<PlanetFeature[]> {
+  async function fetchGazetteerKMZ(kmzUrl: string, body: BodyKey): Promise<PlanetFeature[]> {
     try {
       // If backend proxy set, use it to avoid CORS problems; otherwise try direct fetch
       const fetchUrl = backendBase ? `${backendBase}/proxy/kmz?url=${encodeURIComponent(kmzUrl)}` : kmzUrl;
@@ -1102,10 +1221,14 @@ export default function TileViewer({
       for (const feat of geojson.features ?? []) {
         if (!feat.geometry || feat.geometry.type !== "Point") continue;
         const [lon, lat] = (feat.geometry as Point).coordinates;
+        const canonicalLon = normalizeLongitude(
+          Number(lon),
+          BODY_LONGITUDE_CONVENTIONS[body] ?? BODY_LONGITUDE_CONVENTIONS.unknown
+        );
         pts.push({
           name: (feat.properties as any)?.name || (feat.properties as any)?.Name || "unnamed",
           lat: Number(lat),
-          lon: Number(lon),
+          lon: canonicalLon,
         });
       }
       return pts;
@@ -1117,14 +1240,14 @@ export default function TileViewer({
 
   async function loadMoonGazetteer() {
     const moonKmz = "https://asc-planetarynames-data.s3.us-west-2.amazonaws.com/MOON_nomenclature_center_pts.kmz";
-    const pts = await fetchGazetteerKMZ(moonKmz);
+    const pts = await fetchGazetteerKMZ(moonKmz, "moon");
     setFeatures(pts.slice(0, 500));
   }
 
   async function queryMarsCraterDB() {
     // First try USGS center points KMZ to populate names
     const marsKmz = "https://asc-planetarynames-data.s3.us-west-2.amazonaws.com/MARS_nomenclature_center_pts.kmz";
-    const ptsFromKmz = await fetchGazetteerKMZ(marsKmz);
+    const ptsFromKmz = await fetchGazetteerKMZ(marsKmz, "mars");
     // then fetch Robbins crater DB via pygeoapi
     const base = "https://astrogeology.usgs.gov/pygeoapi/collections/mars/robbinsv1/items?f=json&limit=500";
     try {
@@ -1140,10 +1263,11 @@ export default function TileViewer({
         const lat = f.properties?.lat;
         const lon = f.properties?.lon_e;
         if (typeof lat !== "number" || typeof lon !== "number") return null;
+        const canonicalLon = normalizeLongitude(lon, BODY_LONGITUDE_CONVENTIONS.mars);
         return {
           name: f.properties?.craterid || f.properties?.name || "crater",
           lat,
-          lon,
+          lon: canonicalLon,
           diamkm: f.properties?.diamkm,
         } as PlanetFeature;
       }).filter(Boolean) as PlanetFeature[];
@@ -1176,7 +1300,13 @@ export default function TileViewer({
       
       if (result.found) {
         const { body, center, feature, provider, ai_description } = result;
-        
+
+        const bodyKey = (body ?? selectedBody) as BodyKey;
+        const canonicalLon = normalizeLongitude(
+          center.lon,
+          BODY_LONGITUDE_CONVENTIONS[bodyKey] ?? BODY_LONGITUDE_CONVENTIONS.unknown
+        );
+
         if (body !== selectedBody) {
           setSelectedBody(body);
         }
@@ -1188,15 +1318,15 @@ export default function TileViewer({
         const searchFeature = {
           name: feature.name,
           lat: center.lat,
-          lon: center.lon,
+          lon: canonicalLon,
           category: feature.category,
           diameter_km: feature.diameter_km
         };
-        
+
         setFeatures([searchFeature]);
-        
+
         setTimeout(() => {
-          flyToLocation(center.lon, center.lat, 6, searchFeature);
+          flyToLocation(canonicalLon, center.lat, 6, searchFeature);
         }, 1000);
         
         console.log('ui.flow', 'search_completed', {
@@ -1236,7 +1366,7 @@ export default function TileViewer({
       const locations: PlanetFeature[] = results.map((item: any) => ({
         name: item.display_name,
         lat: parseFloat(item.lat),
-        lon: parseFloat(item.lon),
+        lon: normalizeLongitude(parseFloat(item.lon), BODY_LONGITUDE_CONVENTIONS.earth),
         type: item.type,
         class: item.class
       }));
@@ -1249,19 +1379,19 @@ export default function TileViewer({
 
   async function loadMercuryGazetteer() {
     const mercuryKmz = "https://asc-planetarynames-data.s3.us-west-2.amazonaws.com/MERCURY_nomenclature_center_pts.kmz";
-    const pts = await fetchGazetteerKMZ(mercuryKmz);
+    const pts = await fetchGazetteerKMZ(mercuryKmz, "mercury");
     setFeatures(pts.slice(0, 500));
   }
 
   async function loadCeresGazetteer() {
     const ceresKmz = "https://asc-planetarynames-data.s3.us-west-2.amazonaws.com/CERES_nomenclature_center_pts.kmz";
-    const pts = await fetchGazetteerKMZ(ceresKmz);
+    const pts = await fetchGazetteerKMZ(ceresKmz, "ceres");
     setFeatures(pts.slice(0, 500));
   }
 
   async function loadVestaGazetteer() {
     const vestaKmz = "https://asc-planetarynames-data.s3.us-west-2.amazonaws.com/VESTA_nomenclature_center_pts.kmz";
-    const pts = await fetchGazetteerKMZ(vestaKmz);
+    const pts = await fetchGazetteerKMZ(vestaKmz, "vesta");
     setFeatures(pts.slice(0, 500));
   }
 
@@ -1291,6 +1421,155 @@ export default function TileViewer({
     }
   }
 
+  function removeProjectionDebug(viewerInstance?: any) {
+    const activeViewer = viewerInstance ?? viewerObjRef.current;
+    if (!activeViewer) return;
+
+    const { grid, markers } = debugOverlaysRef.current;
+    if (grid) {
+      try {
+        activeViewer.removeOverlay(grid);
+      } catch (err) {
+        console.warn("Failed to remove grid overlay", err);
+      }
+    }
+    markers?.forEach((marker) => {
+      try {
+        activeViewer.removeOverlay(marker);
+      } catch (err) {
+        console.warn("Failed to remove reference marker", err);
+      }
+    });
+    debugOverlaysRef.current = { markers: [] };
+  }
+
+  function createGridOverlayElement(mode: LongitudeDebugMode): HTMLElement {
+    const lonLines: string[] = [];
+    const latLines: string[] = [];
+    for (let lon = 0; lon <= 360; lon += 1) {
+      const isMajor = lon % 10 === 0;
+      const opacity = isMajor ? 0.45 : 0.18;
+      const width = isMajor ? 0.6 : 0.3;
+      lonLines.push(
+        `<line x1="${lon}" y1="0" x2="${lon}" y2="180" stroke="rgba(122, 188, 255, ${opacity})" stroke-width="${width}" />`
+      );
+    }
+    for (let lat = 0; lat <= 180; lat += 1) {
+      const isMajor = (lat % 10) === 0;
+      const opacity = isMajor ? 0.4 : 0.16;
+      const width = isMajor ? 0.6 : 0.3;
+      latLines.push(
+        `<line x1="0" y1="${lat}" x2="360" y2="${lat}" stroke="rgba(122, 188, 255, ${opacity})" stroke-width="${width}" />`
+      );
+    }
+
+    const lonLabels: number[] = [];
+    if (mode === "east-360") {
+      for (let value = 0; value <= 360; value += 30) {
+        lonLabels.push(value);
+      }
+    } else {
+      for (let value = -180; value <= 180; value += 30) {
+        lonLabels.push(value);
+      }
+    }
+
+    const latLabels = [-90, -60, -30, 0, 30, 60, 90];
+    const labelFragments: string[] = [];
+
+    lonLabels.forEach((value) => {
+      const canonical = mode === "east-360" ? value - 180 : value;
+      const x = canonicalToDisplay(canonical, "east-360");
+      labelFragments.push(
+        `<text x="${x}" y="6" class="pe-grid-label">${mode === "east-360" ? `${value}°E` : formatLongitude(canonical, mode)}</text>`
+      );
+    });
+
+    latLabels.forEach((latValue) => {
+      const y = 90 - latValue;
+      const label = `${Math.abs(latValue)}°${latValue < 0 ? "S" : latValue > 0 ? "N" : ""}`;
+      labelFragments.push(`<text x="354" y="${y + 4}" class="pe-grid-label" text-anchor="end">${label}</text>`);
+    });
+
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 360 180");
+    svg.classList.add("pe-grid-overlay");
+    svg.innerHTML = `${lonLines.join("")}${latLines.join("")}${labelFragments.join("")}`;
+    return svg as unknown as HTMLElement;
+  }
+
+  function createReferenceMarkerElement(
+    name: string,
+    canonicalLon: number,
+    lat: number,
+    mode: LongitudeDebugMode
+  ): HTMLElement {
+    const container = document.createElement("div");
+    container.className = "pe-reference-marker";
+    const coords = `${formatLongitude(canonicalLon, mode)} · ${lat.toFixed(1)}°`;
+    container.innerHTML = `
+      <div class="pe-reference-marker__ring"></div>
+      <div class="pe-reference-marker__label">
+        <span class="pe-reference-marker__name">${name}</span>
+        <span class="pe-reference-marker__coords">${coords}</span>
+      </div>
+    `;
+    return container;
+  }
+
+  function attachProjectionDebug(viewer: any, body: BodyKey, mode: LongitudeDebugMode) {
+    removeProjectionDebug(viewer);
+
+    const osdGlobal = (window as any).OpenSeadragon;
+    if (!osdGlobal) {
+      console.warn("OpenSeadragon global not available for debug overlay");
+      return;
+    }
+
+    const item = viewer.world.getItemAt(0);
+    if (!item) {
+      console.warn("No world item for debug overlay");
+      return;
+    }
+
+    const dimensions = item.source?.dimensions || item.source || {};
+    const imgW = dimensions.x || dimensions.width;
+    const imgH = dimensions.y || dimensions.height;
+    if (!imgW || !imgH) {
+      console.warn("Missing image dimensions for debug overlay");
+      return;
+    }
+
+    const gridElement = createGridOverlayElement(mode);
+    const rect = new osdGlobal.Rect(0, 0, imgW, imgH);
+    const viewportRect = viewer.viewport.imageToViewportRectangle(rect);
+    viewer.addOverlay({
+      element: gridElement,
+      location: viewportRect,
+      placement: osdGlobal.Placement.TOP_LEFT,
+      checkResize: false,
+    });
+
+    const markerElements: HTMLElement[] = [];
+    const references = REFERENCE_FEATURES[body] || [];
+    references.forEach((ref) => {
+      const canonicalLon = normalizeLongitude(ref.lon, BODY_LONGITUDE_CONVENTIONS[body]);
+      const marker = createReferenceMarkerElement(ref.name, canonicalLon, ref.lat, mode);
+      const lonForImage = canonicalToDisplay(canonicalLon, "east-360");
+      const x = (lonForImage / 360) * imgW;
+      const y = ((90 - ref.lat) / 180) * imgH;
+      viewer.addOverlay({
+        element: marker,
+        location: viewer.viewport.imageToViewportCoordinates(x, y),
+        placement: osdGlobal.Placement.CENTER,
+        checkResize: false,
+      });
+      markerElements.push(marker);
+    });
+
+    debugOverlaysRef.current = { grid: gridElement, markers: markerElements };
+  }
+
   // Reverse search: find nearest feature to clicked coordinates
   function handleReverseSearch(lat: number, lon: number, body: string) {
     console.log('[Reverse Search] Finding nearest feature to:', { lat, lon, body });
@@ -1304,9 +1583,12 @@ export default function TileViewer({
 
     // Calculate distance between two lat/lon points (Haversine formula)
     const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-      const R = 6371; // Earth radius in km (approximate for all bodies)
+      const bodyKey = (body ?? "unknown") as BodyKey;
+      const R = BODY_RADII_KM[bodyKey] ?? BODY_RADII_KM.unknown;
+      const lon1Canonical = normalizeLongitude(lon1, BODY_LONGITUDE_CONVENTIONS[bodyKey]);
+      const lon2Canonical = normalizeLongitude(lon2, BODY_LONGITUDE_CONVENTIONS[bodyKey]);
       const dLat = (lat2 - lat1) * Math.PI / 180;
-      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const dLon = (lon2Canonical - lon1Canonical) * Math.PI / 180;
       const a = 
         Math.sin(dLat / 2) * Math.sin(dLat / 2) +
         Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
@@ -1367,9 +1649,10 @@ export default function TileViewer({
     console.log('ui.flow', 'camera_flyto_started', { lon, lat, zoom: zoomLevel });
     const startTime = Date.now();
 
-    // Normalize lon from -180..180 to 0..360 used by Trek tile images
-    lon = ((lon % 360) + 360) % 360;
+    const bodyKey = selectedBody as BodyKey;
+    const canonicalLon = wrapLongitude180(lon);
     lat = Math.max(-90, Math.min(90, lat));
+    const lonForImage = canonicalToDisplay(canonicalLon, "east-360");
 
     // get image dimensions from the first world item
     let sourceItem;
@@ -1387,36 +1670,36 @@ export default function TileViewer({
     const imgH = sourceItem.source.height;
 
     // Convert lon/lat to image pixel coordinates
-    const x = (lon / 360) * imgW;
+    const x = (lonForImage / 360) * imgW;
     const y = ((90 - lat) / 180) * imgH;
 
-    // Add marker with Lucide MapPin icon
+    // Remove previous pulse overlay if present
+    if (pulseOverlayRef.current) {
+      try {
+        v.removeOverlay(pulseOverlayRef.current);
+      } catch (overlayErr) {
+        console.warn("Failed to remove previous pulse overlay", overlayErr);
+      }
+      pulseOverlayRef.current = null;
+    }
+
+    // Add pulsing ring marker to suggest approximate location
     try {
       const marker = document.createElement("div");
-      marker.style.cssText = `
-        width: 32px;
-        height: 32px;
-        transform: translate(-50%, -100%);
-        z-index: 100;
-        position: relative;
-      `;
-      
-      // Create pin icon using SVG (Lucide MapPin)
-      marker.innerHTML = `
-        <div style="position: absolute; inset: 0; margin: -8px; border-radius: 50%; background: rgba(59, 130, 246, 0.3); animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="rgb(59, 130, 246)" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="position: relative; z-index: 10; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.3));">
-          <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/>
-          <circle cx="12" cy="10" r="3"/>
-        </svg>
-      `;
+      marker.className = "pe-pulse-marker";
+      marker.style.setProperty("--pe-pulse-scale", (Math.max(0.6, Math.min(2.0, 8 / (zoomLevel || 4)))).toString());
+      marker.dataset.body = bodyKey;
+      marker.dataset.lat = lat.toString();
+      marker.dataset.lon = canonicalLon.toString();
 
       v.addOverlay({
         element: marker,
         location: v.viewport.imageToViewportCoordinates(x, y),
-        placement: "TOP_LEFT",
+        placement: "CENTER",
         checkResize: false,
       });
-      
+
+      pulseOverlayRef.current = marker;
       console.log('ui.flow', 'pin_rendered', true);
     } catch (err) {
       console.error("Error adding overlay:", err);

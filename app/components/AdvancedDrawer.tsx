@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Settings, X, Layers, Square, Eye } from "lucide-react";
+import { Settings, X, Layers, Square, Eye, Globe2, Grid3X3 } from "lucide-react";
 
 interface AdvancedDrawerProps {
   isOpen: boolean;
@@ -10,11 +10,15 @@ interface AdvancedDrawerProps {
   onSplitViewToggle?: (enabled: boolean) => void;
   onSplitLayerChange?: (layerId: string) => void;
   onOsdToolbarToggle?: (visible: boolean) => void;
+  onProjectionDebugToggle?: (enabled: boolean) => void;
+  onLongitudeDebugModeChange?: (mode: "east-180" | "east-360") => void;
   currentDataset?: string;
   currentBody?: string;
   splitViewEnabled?: boolean;
   splitLayerId?: string;
   osdToolbarVisible?: boolean;
+  projectionDebugEnabled?: boolean;
+  longitudeDebugMode?: "east-180" | "east-360";
 }
 
 export default function AdvancedDrawer({
@@ -24,16 +28,22 @@ export default function AdvancedDrawer({
   onSplitViewToggle,
   onSplitLayerChange,
   onOsdToolbarToggle,
+  onProjectionDebugToggle,
+  onLongitudeDebugModeChange,
   currentDataset = "default",
   currentBody = "moon",
   splitViewEnabled = false,
   splitLayerId = "",
   osdToolbarVisible = false,
+  projectionDebugEnabled = false,
+  longitudeDebugMode = "east-180",
 }: AdvancedDrawerProps) {
   const [localDataset, setLocalDataset] = useState(currentDataset);
   const [localSplitView, setLocalSplitView] = useState(splitViewEnabled);
   const [localSplitLayer, setLocalSplitLayer] = useState(splitLayerId);
   const [localOsdToolbar, setLocalOsdToolbar] = useState(osdToolbarVisible);
+  const [localProjectionDebug, setLocalProjectionDebug] = useState(projectionDebugEnabled);
+  const [localLongitudeMode, setLocalLongitudeMode] = useState(longitudeDebugMode);
 
   useEffect(() => {
     if (isOpen) {
@@ -41,8 +51,10 @@ export default function AdvancedDrawer({
       setLocalSplitView(splitViewEnabled);
       setLocalSplitLayer(splitLayerId);
       setLocalOsdToolbar(osdToolbarVisible);
+      setLocalProjectionDebug(projectionDebugEnabled);
+      setLocalLongitudeMode(longitudeDebugMode);
     }
-  }, [isOpen, currentDataset, splitViewEnabled, splitLayerId, osdToolbarVisible]);
+  }, [isOpen, currentDataset, splitViewEnabled, splitLayerId, osdToolbarVisible, projectionDebugEnabled, longitudeDebugMode]);
 
   if (!isOpen) return null;
 
@@ -107,6 +119,18 @@ export default function AdvancedDrawer({
     const newValue = !localOsdToolbar;
     setLocalOsdToolbar(newValue);
     onOsdToolbarToggle?.(newValue);
+  };
+
+  const handleProjectionDebugToggle = () => {
+    const newValue = !localProjectionDebug;
+    setLocalProjectionDebug(newValue);
+    onProjectionDebugToggle?.(newValue);
+  };
+
+  const handleLongitudeModeToggle = () => {
+    const newValue = localLongitudeMode === "east-180" ? "east-360" : "east-180";
+    setLocalLongitudeMode(newValue);
+    onLongitudeDebugModeChange?.(newValue);
   };
 
   return (
@@ -219,6 +243,50 @@ export default function AdvancedDrawer({
               />
             </button>
           </div>
+        </div>
+
+        {/* Projection Debug Controls */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between py-2 px-3 bg-white/5 rounded-lg hover:bg-white/10 transition-colors">
+            <div className="flex items-center gap-2 text-white/90">
+              <Grid3X3 size={16} />
+              <span className="text-sm font-medium">Projection Debug Grid</span>
+            </div>
+            <button
+              onClick={handleProjectionDebugToggle}
+              className={`relative w-11 h-6 rounded-full transition-colors ${
+                localProjectionDebug ? "bg-blue-500" : "bg-white/20"
+              }`}
+              aria-label="Toggle projection debug grid"
+            >
+              <span
+                className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                  localProjectionDebug ? "translate-x-5" : ""
+                }`}
+              />
+            </button>
+          </div>
+
+          <div className={`flex items-center justify-between py-2 px-3 rounded-lg transition-colors ${
+            localProjectionDebug ? "bg-blue-500/10" : "bg-white/5"
+          }`}>
+            <div className="flex items-center gap-2 text-white/90">
+              <Globe2 size={16} />
+              <span className="text-sm font-medium">Longitude Domain</span>
+            </div>
+            <button
+              onClick={handleLongitudeModeToggle}
+              className="px-3 py-1 rounded-md bg-white/10 hover:bg-white/20 text-xs font-medium text-white"
+            >
+              {localLongitudeMode === "east-180" ? "−180…180" : "0…360"}
+            </button>
+          </div>
+
+          <p className="text-[11px] leading-relaxed text-white/60">
+            Use the debug grid to verify tile alignment against 1° lines and
+            landmark markers. Toggle the longitude domain to inspect datasets
+            that publish 0–360° values.
+          </p>
         </div>
       </div>
     </div>

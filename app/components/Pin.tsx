@@ -1,6 +1,6 @@
 "use client";
 
-import { MapPin } from "lucide-react";
+import { canonicalToDisplay, wrapLongitude180 } from "../lib/coordinates";
 
 interface PinProps {
   lat: number;
@@ -20,6 +20,9 @@ const BODY_RADII: Record<string, number> = {
 
 export default function Pin({ lat, lon, body, name, diameter_km, onClick }: PinProps) {
   const showCraterHighlight = diameter_km && diameter_km > 0;
+  const canonicalLon = wrapLongitude180(lon);
+  const xPercent = (canonicalToDisplay(canonicalLon, "east-360") / 360) * 100;
+  const yPercent = ((90 - lat) / 180) * 100;
 
   // Calculate approximate circle radius in degrees
   const getCircleRadiusDeg = (): number | null => {
@@ -46,8 +49,8 @@ export default function Pin({ lat, lon, body, name, diameter_km, onClick }: PinP
     <div
       className="absolute -translate-x-1/2 -translate-y-full cursor-pointer z-10"
       style={{
-        left: `${((lon + 180) / 360) * 100}%`,
-        top: `${((90 - lat) / 180) * 100}%`,
+        left: `${xPercent}%`,
+        top: `${yPercent}%`,
       }}
       onClick={onClick}
     >
@@ -63,17 +66,8 @@ export default function Pin({ lat, lon, body, name, diameter_km, onClick }: PinP
         />
       )}
 
-      {/* Pin icon with ripple */}
-      <div className="relative">
-        <div className="absolute inset-0 -m-2 rounded-full bg-blue-400/30 animate-ping" 
-             style={{ animationDuration: '2s' }} />
-        <MapPin 
-          size={32} 
-          className="text-blue-400 drop-shadow-lg relative z-10" 
-          fill="currentColor"
-          strokeWidth={1.5}
-        />
-      </div>
+      {/* Pulsing ring marker */}
+      <div className="pe-pulse-marker" style={{ transform: "translate(-50%, -50%) scale(0.8)" }} />
 
       {/* Label tooltip */}
       {name && (

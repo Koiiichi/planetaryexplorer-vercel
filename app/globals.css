@@ -130,6 +130,111 @@ body {
   }
 }
 
+.pe-pulse-marker {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  transform: translate(-50%, -50%) scale(var(--pe-pulse-scale, 1));
+  pointer-events: none;
+  z-index: 120;
+}
+
+.pe-pulse-marker::before,
+.pe-pulse-marker::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(59, 130, 246, 0.55);
+  box-shadow: 0 0 24px rgba(59, 130, 246, 0.35);
+}
+
+.pe-pulse-marker::before {
+  animation: pe-pulse-ring 2.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.pe-pulse-marker::after {
+  inset: 18px;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.75) 0%, rgba(59, 130, 246, 0.2) 70%, transparent 100%);
+}
+
+@keyframes pe-pulse-ring {
+  0% {
+    transform: scale(0.45);
+    opacity: 0.9;
+  }
+  70% {
+    transform: scale(1.2);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(0.45);
+    opacity: 0;
+  }
+}
+
+.pe-grid-overlay {
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.pe-grid-overlay line {
+  shape-rendering: crispEdges;
+}
+
+.pe-grid-label {
+  fill: rgba(255, 255, 255, 0.75);
+  font-size: 5px;
+  font-family: "Inter", sans-serif;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.4);
+  stroke-width: 0.8px;
+}
+
+.pe-reference-marker {
+  position: relative;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.pe-reference-marker__ring {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.pe-reference-marker__label {
+  background: rgba(12, 20, 40, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  padding: 4px 8px;
+  backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 120px;
+}
+
+.pe-reference-marker__name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.pe-reference-marker__coords {
+  font-size: 10px;
+  color: rgba(220, 235, 255, 0.8);
+}
+
 /* Full-bleed viewer mode */
 .pe-viewer-fullbleed {
   position: fixed !important;
