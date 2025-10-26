@@ -1,0 +1,99 @@
+{
+  "moon:lro_wac_global": {
+    "lat_offset_deg": 0,
+    "lon_offset_deg": 0,
+    "pixel_offset": { "x": 0, "y": 0 },
+    "lat_scale": 1,
+    "lon_scale": 1,
+    "dynamic": {
+      "zoom_levels": [],
+      "lat_bands": []
+    },
+    "updated_at": "2025-10-21T00:00:00Z"
+  },
+  "moon:lro_lola_elevation": {
+    "lat_offset_deg": 0,
+    "lon_offset_deg": 0,
+    "pixel_offset": { "x": 0, "y": 0 },
+    "lat_scale": 1,
+    "lon_scale": 1,
+    "dynamic": {
+      "zoom_levels": [],
+      "lat_bands": []
+    },
+    "updated_at": "2025-10-21T00:00:00Z"
+  },
+  "moon:lro_nac_apollo": {
+    "lat_offset_deg": 0,
+    "lon_offset_deg": 0,
+    "pixel_offset": { "x": 0, "y": 0 },
+    "lat_scale": 1,
+    "lon_scale": 1,
+    "dynamic": {
+      "zoom_levels": [],
+      "lat_bands": []
+    },
+    "updated_at": "2025-10-21T00:00:00Z"
+  },
+  "mars:mars_mgs_mola": {
+    "lat_offset_deg": 0,
+    "lon_offset_deg": 0,
+    "pixel_offset": { "x": 0, "y": 0 },
+    "lat_scale": 1,
+    "lon_scale": 1,
+    "dynamic": {
+      "zoom_levels": [],
+      "lat_bands": []
+    },
+    "updated_at": "2025-10-21T00:00:00Z"
+  },
+  "mars:mars_viking_mosaic": {
+    "lat_offset_deg": 0,
+    "lon_offset_deg": 0,
+    "pixel_offset": { "x": 0, "y": 0 },
+    "lat_scale": 1,
+    "lon_scale": 1,
+    "dynamic": {
+      "zoom_levels": [],
+      "lat_bands": []
+    },
+    "updated_at": "2025-10-21T00:00:00Z"
+  },
+  "mars:mars_hirise": {
+    "lat_offset_deg": 0,
+    "lon_offset_deg": 0,
+    "pixel_offset": { "x": 0, "y": 0 },
+    "lat_scale": 1,
+    "lon_scale": 1,
+    "dynamic": {
+      "zoom_levels": [],
+      "lat_bands": []
+    },
+    "updated_at": "2025-10-21T00:00:00Z"
+  },
+  "mercury:messenger_mdis_basemap": {
+    "lat_offset_deg": 0,
+    "lon_offset_deg": 0,
+    "pixel_offset": { "x": 0, "y": 0 },
+    "lat_scale": 1,
+    "lon_scale": 1,
+    "dynamic": {
+      "zoom_levels": [],
+      "lat_bands": []
+    },
+    "updated_at": "2025-10-21T00:00:00Z"
+  },
+  "mercury:messenger_global_mosaic": {
+    "lat_offset_deg": 0,
+    "lon_offset_deg": 0,
+    "pixel_offset": { "x": 0, "y": 0 },
+    "lat_scale": 1,
+    "lon_scale": 1,
+    "dynamic": {
+      "zoom_levels": [],
+      "lat_bands": []
+    },
+    "updated_at": "2025-10-21T00:00:00Z"
+  }
+}
+

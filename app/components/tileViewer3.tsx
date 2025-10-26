@@ -375,13 +375,13 @@ export default function TileViewer({
     selectedBodyRef.current = selectedBody;
     gridOverlayStateRef.current?.update();
     renderReferenceFeatureOverlays();
-  }, [selectedBody, renderReferenceFeatureOverlays]);
+  }, [selectedBody]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     selectedLayerIdRef.current = selectedLayerId;
     gridOverlayStateRef.current?.update();
     renderReferenceFeatureOverlays();
-  }, [selectedLayerId, renderReferenceFeatureOverlays]);
+  }, [selectedLayerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     lonConventionModeRef.current = lonConventionMode;
@@ -400,13 +400,13 @@ export default function TileViewer({
   useEffect(() => {
     showReferenceFeaturesRef.current = showReferenceFeatures;
     renderReferenceFeatureOverlays();
-  }, [showReferenceFeatures, renderReferenceFeatureOverlays]);
+  }, [showReferenceFeatures]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     correctionsRef.current = mergedCorrections;
     gridOverlayStateRef.current?.update();
     renderReferenceFeatureOverlays();
-  }, [mergedCorrections, renderReferenceFeatureOverlays]);
+  }, [mergedCorrections]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const correction = getAlignmentCorrectionForLayer(
@@ -452,7 +452,7 @@ export default function TileViewer({
       
       return () => clearTimeout(debounceTimer);
     }
-  }, [searchText, selectedBody, searchEarthLocations, loadMoonGazetteer, queryMarsCraterDB, loadMercuryGazetteer, loadCeresGazetteer, loadVestaGazetteer]);
+  }, [searchText, selectedBody]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // client-side detection to prevent hydration mismatch
   useEffect(() => {
@@ -763,7 +763,7 @@ export default function TileViewer({
     }, 600);
 
     return () => clearTimeout(timeout);
-  }, [initialLat, initialLon, initialZoom, layerConfig, panToLonLat]);
+  }, [initialLat, initialLon, initialZoom, layerConfig]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Split/overlay viewer functionality
   // Initialize and sync viewers
@@ -1048,7 +1048,7 @@ export default function TileViewer({
       mounted = false;
       cleanup();
     };
-  }, [selectedBody, selectedLayerId, selectedOverlayId, viewMode, selectedDate, layerConfig, createGridOverlay, renderReferenceFeatureOverlays]);
+  }, [selectedBody, selectedLayerId, selectedOverlayId, viewMode, selectedDate, layerConfig]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Update overlay opacity when it changes
   useEffect(() => {
