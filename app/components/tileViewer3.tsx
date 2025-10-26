@@ -1,21 +1,28 @@
 // app/components/TileViewer.tsx
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import JSZip from "jszip";
 // @ts-ignore - togeojson doesn't have types
 import toGeoJSON from "togeojson";
 import type { FeatureCollection, Point } from "geojson";
 
-type BodyKey =
-  | "earth"
-  | "milky_way"
-  | "moon"
-  | "mars"
-  | "mercury"
-  | "ceres"
-  | "vesta"
-  | "unknown";
+import {
+  DEFAULT_ALIGNMENT_CORRECTIONS,
+  type AlignmentCorrection,
+  type BodyKey,
+  formatLatitude,
+  formatLongitude,
+  getAlignmentCorrectionForLayer,
+  getBodyProjectionMetadata,
+  inferLongitudeConvention,
+  loadStoredCorrections,
+  lonLatToImagePoint,
+  normalizeLatitude,
+  saveStoredCorrections,
+  toCanonicalLongitude,
+  type LonConvention,
+} from "../lib/planetaryGeodesy";
 
 type DatasetListItem = {
   id: string;
@@ -40,6 +47,37 @@ type PlanetFeature = {
   lat: number;
   lon: number;
   diamkm?: number;
+  type?: string;
+  class?: string;
+};
+
+const KNOWN_REFERENCE_FEATURES: Record<BodyKey, Array<{ name: string; lat: number; lon: number }>> = {
+  earth: [],
+  milky_way: [],
+  moon: [
+    { name: "Tycho", lat: -43.31, lon: -11.36 },
+    { name: "Clavius", lat: -58.77, lon: -14.68 },
+    { name: "Copernicus", lat: 9.62, lon: -20.08 },
+    { name: "Mare Imbrium", lat: 32.8, lon: -15.6 },
+    { name: "Aristarchus", lat: 23.7, lon: -47.5 },
+  ],
+  mars: [
+    { name: "Olympus Mons", lat: 18.65, lon: -133.8 },
+    { name: "Gale Crater", lat: -5.4, lon: 137.8 },
+    { name: "Valles Marineris", lat: -13.9, lon: -59.3 },
+    { name: "Elysium Planitia", lat: 2.0, lon: 155.0 },
+    { name: "Jezero Crater", lat: 18.4, lon: 77.6 },
+  ],
+  mercury: [
+    { name: "Caloris Planitia", lat: 30.0, lon: -160.0 },
+    { name: "Tolstoj", lat: -16.4, lon: -166.6 },
+    { name: "Beethoven", lat: -20.8, lon: -124.3 },
+    { name: "Rembrandt", lat: -33.5, lon: 33.0 },
+    { name: "Raditladi", lat: 27.4, lon: 119.0 },
+  ],
+  ceres: [],
+  vesta: [],
+  unknown: [],
 };
 
 // --- local TREK templates (fallback / examples) ----------------------
@@ -288,10 +326,120 @@ export default function TileViewer({
   const [overlayOpacity, setOverlayOpacity] = useState<number>(0.5);
   const [viewMode, setViewMode] = useState<"single" | "split" | "overlay">("single");
   const [selectedDate, setSelectedDate] = useState<string>("");
-  const [compareDate, setCompareDate] = useState<string>(""); // For temporal comparison
-  const [temporalMode, setTemporalMode] = useState<"single" | "compare" | "animation">("single");
   const [features, setFeatures] = useState<PlanetFeature[]>([]);
   const [searchText, setSearchText] = useState<string>(externalSearchQuery ?? "");
+  const [lonConventionMode, setLonConventionMode] = useState<"canonical" | "native">("canonical");
+  const [showGrid, setShowGrid] = useState<boolean>(false);
+  const [showReferenceFeatures, setShowReferenceFeatures] = useState<boolean>(false);
+  const [showDebugTools, setShowDebugTools] = useState<boolean>(false);
+  const [alignmentOverrides, setAlignmentOverrides] = useState<Record<string, AlignmentCorrection>>(() => loadStoredCorrections());
+  const [alignmentDraft, setAlignmentDraft] = useState<{ x: string; y: string }>({ x: "", y: "" });
+
+  const bodyProjection = getBodyProjectionMetadata(selectedBody);
+  const displayLonConvention: LonConvention = lonConventionMode === "native"
+    ? bodyProjection.nativeLonConvention
+    : "EAST_180";
+
+  const mergedCorrections = useMemo(
+    () => ({ ...DEFAULT_ALIGNMENT_CORRECTIONS, ...alignmentOverrides }),
+    [alignmentOverrides]
+  );
+
+  const activeCorrection = getAlignmentCorrectionForLayer(
+    selectedLayerId,
+    selectedBody,
+    mergedCorrections
+  );
+
+  const markerElementRef = useRef<HTMLDivElement | null>(null);
+  const gridOverlayStateRef = useRef<{ update: () => void; dispose: () => void } | null>(null);
+  const referenceOverlayElementsRef = useRef<HTMLDivElement[]>([]);
+  const selectedBodyRef = useRef<BodyKey>(selectedBody);
+  const selectedLayerIdRef = useRef<string | null>(selectedLayerId);
+  const lonConventionModeRef = useRef<"canonical" | "native">(lonConventionMode);
+  const showGridRef = useRef<boolean>(showGrid);
+  const showReferenceFeaturesRef = useRef<boolean>(showReferenceFeatures);
+  const correctionsRef = useRef<Record<string, AlignmentCorrection>>(mergedCorrections);
+  const overlayOpacityRef = useRef<number>(overlayOpacity);
+
+  const getCurrentAlignmentCorrection = useCallback(() => {
+    return getAlignmentCorrectionForLayer(
+      selectedLayerIdRef.current,
+      selectedBodyRef.current,
+      correctionsRef.current
+    );
+  }, []);
+
+  const getPrimaryImageDimensions = useCallback(
+    (viewer: any): { width: number; height: number } | null => {
+      try {
+        const item = viewer.world.getItemAt(0);
+        const source = item?.source;
+        if (!source?.width || !source?.height) {
+          return null;
+        }
+        return { width: source.width, height: source.height };
+      } catch (err) {
+        console.error("No world item in viewer", err);
+        return null;
+      }
+    },
+    []
+  );
+
+  const renderReferenceFeatureOverlays = useCallback(
+    (forceViewer?: any) => {
+      const viewer = forceViewer ?? viewerObjRef.current;
+      if (!viewer) return;
+
+      clearReferenceOverlays(viewer);
+
+      if (!showReferenceFeaturesRef.current) {
+        return;
+      }
+
+      const dims = getPrimaryImageDimensions(viewer);
+      if (!dims) return;
+
+      const bodyKey = selectedBodyRef.current;
+      const referenceFeatures = KNOWN_REFERENCE_FEATURES[bodyKey] ?? [];
+      if (!referenceFeatures.length) return;
+
+      const correction = getCurrentAlignmentCorrection();
+
+      referenceFeatures.forEach((feat) => {
+        const imagePoint = lonLatToImagePoint(feat.lon, feat.lat, bodyKey, dims, {
+          sourceConvention: "EAST_180",
+          correction,
+        });
+        const viewportPoint = viewer.viewport.imageToViewportCoordinates(
+          imagePoint.x,
+          imagePoint.y
+        );
+
+        const marker = document.createElement("div");
+        marker.className = "reference-marker";
+        marker.innerHTML = `
+          <div class="reference-marker__dot"></div>
+          <span class="reference-marker__label">${feat.name}</span>
+        `;
+        marker.style.pointerEvents = "none";
+
+        try {
+          viewer.addOverlay({
+            element: marker,
+            location: viewportPoint,
+            placement: "CENTER",
+            checkResize: false,
+          });
+          referenceOverlayElementsRef.current.push(marker);
+        } catch (err) {
+          console.error("Error adding reference marker:", err);
+        }
+      });
+    },
+    [getCurrentAlignmentCorrection, getPrimaryImageDimensions]
+  );
 
   console.log('[TileViewer3 RENDER] initialBody:', initialBody, 'selectedBody:', selectedBody, 'selectedLayerId:', selectedLayerId, 'hasExternalBodySynced:', hasExternalBodySynced.current);
 
@@ -301,6 +449,59 @@ export default function TileViewer({
       setSearchText(externalSearchQuery);
     }
   }, [externalSearchQuery]);
+
+  useEffect(() => {
+    selectedBodyRef.current = selectedBody;
+    gridOverlayStateRef.current?.update();
+    renderReferenceFeatureOverlays();
+  }, [selectedBody, renderReferenceFeatureOverlays]);
+
+  useEffect(() => {
+    selectedLayerIdRef.current = selectedLayerId;
+    gridOverlayStateRef.current?.update();
+    renderReferenceFeatureOverlays();
+  }, [selectedLayerId, renderReferenceFeatureOverlays]);
+
+  useEffect(() => {
+    lonConventionModeRef.current = lonConventionMode;
+    gridOverlayStateRef.current?.update();
+  }, [lonConventionMode]);
+
+  useEffect(() => {
+    showGridRef.current = showGrid;
+    gridOverlayStateRef.current?.update();
+  }, [showGrid]);
+
+  useEffect(() => {
+    overlayOpacityRef.current = overlayOpacity;
+  }, [overlayOpacity]);
+
+  useEffect(() => {
+    showReferenceFeaturesRef.current = showReferenceFeatures;
+    renderReferenceFeatureOverlays();
+  }, [showReferenceFeatures, renderReferenceFeatureOverlays]);
+
+  useEffect(() => {
+    correctionsRef.current = mergedCorrections;
+    gridOverlayStateRef.current?.update();
+    renderReferenceFeatureOverlays();
+  }, [mergedCorrections, renderReferenceFeatureOverlays]);
+
+  useEffect(() => {
+    const correction = getAlignmentCorrectionForLayer(
+      selectedLayerId,
+      selectedBody,
+      mergedCorrections
+    );
+    if (correction?.pixelOffset) {
+      setAlignmentDraft({
+        x: correction.pixelOffset.x.toString(),
+        y: correction.pixelOffset.y.toString(),
+      });
+    } else {
+      setAlignmentDraft({ x: "", y: "" });
+    }
+  }, [selectedLayerId, selectedBody, mergedCorrections]);
 
   // Auto-search for planetary features when search text changes
   useEffect(() => {
@@ -330,7 +531,7 @@ export default function TileViewer({
       
       return () => clearTimeout(debounceTimer);
     }
-  }, [searchText, selectedBody]);
+  }, [searchText, selectedBody, searchEarthLocations, loadMoonGazetteer, queryMarsCraterDB, loadMercuryGazetteer, loadCeresGazetteer, loadVestaGazetteer]);
 
   // client-side detection to prevent hydration mismatch
   useEffect(() => {
@@ -411,7 +612,7 @@ export default function TileViewer({
     })();
 
     return () => { mounted = false; };
-  }, [backendBase, selectedLayerId, selectedBody]);
+  }, [selectedLayerId, selectedBody]);
 
   // Load layer config (either from backend or from local TREK_TEMPLATES)
   useEffect(() => {
@@ -632,32 +833,16 @@ export default function TileViewer({
 
   // Handle initial navigation to coordinates from PhotoSphereGallery
   useEffect(() => {
-    if (initialLat !== undefined && initialLon !== undefined && viewerObjRef.current) {
-      const viewer = viewerObjRef.current;
-      
-      // Wait a bit for viewer to be fully initialized
-      setTimeout(() => {
-        try {
-          // For OpenSeadragon viewers, we need to convert lat/lon to image coordinates
-          // This is a simplified conversion - for more accuracy, we'd need the specific projection
-          const normalizedX = (initialLon + 180) / 360; // Convert -180/180 to 0/1
-          const normalizedY = (90 - initialLat) / 180; // Convert -90/90 to 0/1 (flipped for image coordinates)
-          
-          const imageRect = viewer.world.getItemAt(0).getBounds();
-          const targetX = imageRect.x + (normalizedX * imageRect.width);
-          const targetY = imageRect.y + (normalizedY * imageRect.height);
-          
-          const targetPoint = new viewer.Point(targetX, targetY);
-          const targetZoom = initialZoom ? Math.max(0, initialZoom - 5) : 2; // Convert tile zoom to viewer zoom
-          
-          viewer.viewport.panTo(targetPoint);
-          viewer.viewport.zoomTo(targetZoom);
-        } catch (error) {
-          console.warn("Could not navigate to initial coordinates:", error);
-        }
-      }, 1000);
-    }
-  }, [initialLat, initialLon, initialZoom, layerConfig]);
+    if (initialLat === undefined || initialLon === undefined) return;
+    if (!viewerObjRef.current) return;
+
+    const zoom = initialZoom ? Math.max(0, initialZoom - 2) : 4;
+    const timeout = setTimeout(() => {
+      panToLonLat(initialLon, initialLat, zoom);
+    }, 600);
+
+    return () => clearTimeout(timeout);
+  }, [initialLat, initialLon, initialZoom, layerConfig, panToLonLat]);
 
   // Split/overlay viewer functionality
   // Initialize and sync viewers
@@ -669,12 +854,26 @@ export default function TileViewer({
 
     const cleanup = () => {
       try {
+        if (mainViewer) {
+          clearReferenceOverlays(mainViewer);
+        }
+      } catch {
+        // ignore
+      }
+      if (gridOverlayStateRef.current) {
+        gridOverlayStateRef.current.dispose();
+        gridOverlayStateRef.current = null;
+      }
+      markerElementRef.current = null;
+      try {
         if (mainViewer) { mainViewer.destroy(); mainViewer = null; }
-      } catch (e) { // ignore
+      } catch {
+        // ignore
       }
       try {
         if (compareViewer) { compareViewer.destroy(); compareViewer = null; }
-      } catch (e) { // ignore
+      } catch {
+        // ignore
       }
       viewerObjRef.current = null;
       compareViewerObjRef.current = null;
@@ -741,7 +940,7 @@ export default function TileViewer({
             if (y < 0 || y >= maxTiles) return "";
 
             let finalY = y;
-            let finalX = wrappedX;
+            const finalX = wrappedX;
             
             // Special handling for NASA GIBS (uses TMS coordinate system)
             if (template.includes('gibs.earthdata.nasa.gov')) {
@@ -781,6 +980,13 @@ export default function TileViewer({
         });
 
         viewerObjRef.current = mainViewer;
+
+        if (gridOverlayStateRef.current) {
+          gridOverlayStateRef.current.dispose();
+        }
+        gridOverlayStateRef.current = createGridOverlay(mainViewer);
+        gridOverlayStateRef.current?.update();
+        renderReferenceFeatureOverlays(mainViewer);
 
         // Add overlays (like center crosshair) when open
         mainViewer.addHandler("open", function () {
@@ -823,7 +1029,7 @@ export default function TileViewer({
                 if (y < 0 || y >= maxTiles) return "";
                 
                 let finalY = y;
-                let finalX = wrappedX;
+                const finalX = wrappedX;
                 
                 let url = compareTemplate.template;
                 if (compareTemplate.type === "temporal" && selectedDate) {
@@ -893,15 +1099,17 @@ export default function TileViewer({
             };
 
             // attach bidirectional sync
-            const cleanupA = sync(mainViewer, compareViewer, "main->compare");
-            const cleanupB = sync(compareViewer, mainViewer, "compare->main");
+            sync(mainViewer, compareViewer, "main->compare");
+            sync(compareViewer, mainViewer, "compare->main");
 
             // set overlay opacity if in overlay mode (use world item)
             try {
               if (viewMode === "overlay" && compareViewer.world.getItemAt(0)) {
-                compareViewer.world.getItemAt(0).setOpacity(overlayOpacity);
+                compareViewer.world
+                  .getItemAt(0)
+                  .setOpacity(overlayOpacityRef.current);
               }
-            } catch (err) {
+            } catch {
               // ignore
             }
 
@@ -917,12 +1125,9 @@ export default function TileViewer({
 
     return () => {
       mounted = false;
-      try { if (viewerObjRef.current) viewerObjRef.current.destroy(); } catch {}
-      try { if (compareViewerObjRef.current) compareViewerObjRef.current.destroy(); } catch {}
-      viewerObjRef.current = null;
-      compareViewerObjRef.current = null;
+      cleanup();
     };
-  }, [selectedBody, selectedLayerId, selectedOverlayId, viewMode, selectedDate, layerConfig]);
+  }, [selectedBody, selectedLayerId, selectedOverlayId, viewMode, selectedDate, layerConfig, createGridOverlay, renderReferenceFeatureOverlays]);
 
   // Update overlay opacity when it changes
   useEffect(() => {
@@ -932,7 +1137,7 @@ export default function TileViewer({
     try {
       const item = cmp.world.getItemAt(0);
       if (item && item.setOpacity) item.setOpacity(overlayOpacity);
-    } catch (err) {
+    } catch {
       // ignore
     }
   }, [overlayOpacity, viewMode]);
@@ -952,12 +1157,6 @@ export default function TileViewer({
       default:
         return date;
     }
-  }
-
-  // Helper to pick the currently selected template object
-  function getActiveTemplate() {
-    const list = TREK_TEMPLATES[selectedBody];
-    return list.find((l) => l.id === selectedLayerId) || list[0];
   }
 
   // USGS Gazetteer KML/KMZ example links are available from the USGS "KML and Shapefile downloads" page.
@@ -994,10 +1193,13 @@ export default function TileViewer({
       for (const feat of geojson.features ?? []) {
         if (!feat.geometry || feat.geometry.type !== "Point") continue;
         const [lon, lat] = (feat.geometry as Point).coordinates;
+        const latValue = normalizeLatitude(Number(lat));
+        const lonRaw = Number(lon);
+        const canonicalLon = toCanonicalLongitude(lonRaw, inferLongitudeConvention(lonRaw));
         pts.push({
           name: (feat.properties as any)?.name || (feat.properties as any)?.Name || "unnamed",
-          lat: Number(lat),
-          lon: Number(lon),
+          lat: latValue,
+          lon: canonicalLon,
         });
       }
       return pts;
@@ -1007,13 +1209,13 @@ export default function TileViewer({
     }
   }
 
-  async function loadMoonGazetteer() {
+  const loadMoonGazetteer = useCallback(async () => {
     const moonKmz = "https://asc-planetarynames-data.s3.us-west-2.amazonaws.com/MOON_nomenclature_center_pts.kmz";
     const pts = await fetchGazetteerKMZ(moonKmz);
     setFeatures(pts.slice(0, 500));
-  }
+  }, []);
 
-  async function queryMarsCraterDB() {
+  const queryMarsCraterDB = useCallback(async () => {
     // First try USGS center points KMZ to populate names
     const marsKmz = "https://asc-planetarynames-data.s3.us-west-2.amazonaws.com/MARS_nomenclature_center_pts.kmz";
     const ptsFromKmz = await fetchGazetteerKMZ(marsKmz);
@@ -1032,11 +1234,13 @@ export default function TileViewer({
         const lat = f.properties?.lat;
         const lon = f.properties?.lon_e;
         if (typeof lat !== "number" || typeof lon !== "number") return null;
+        const canonicalLon = toCanonicalLongitude(lon, "EAST_360");
         return {
           name: f.properties?.craterid || f.properties?.name || "crater",
-          lat,
-          lon,
+          lat: normalizeLatitude(lat),
+          lon: canonicalLon,
           diamkm: f.properties?.diamkm,
+          type: f.properties?.featuretyp,
         } as PlanetFeature;
       }).filter(Boolean) as PlanetFeature[];
 
@@ -1047,11 +1251,11 @@ export default function TileViewer({
       console.error("Error fetching Mars crater DB:", err);
       setFeatures(ptsFromKmz.slice(0, 500));
     }
-  }
+  }, []);
 
-  async function searchEarthLocations(query: string) {
+  const searchEarthLocations = useCallback(async (query: string) => {
     if (!query.trim()) return;
-    
+
     try {
       // Use Nominatim (OpenStreetMap) geocoding API for Earth locations
       const encodedQuery = encodeURIComponent(query.trim());
@@ -1065,37 +1269,42 @@ export default function TileViewer({
       }
       
       const results = await resp.json();
-      const locations: PlanetFeature[] = results.map((item: any) => ({
-        name: item.display_name,
-        lat: parseFloat(item.lat),
-        lon: parseFloat(item.lon),
-        type: item.type,
-        class: item.class
-      }));
+      const locations: PlanetFeature[] = results.map((item: any) => {
+        const lat = normalizeLatitude(parseFloat(item.lat));
+        const lonRaw = parseFloat(item.lon);
+        const canonicalLon = toCanonicalLongitude(lonRaw, inferLongitudeConvention(lonRaw));
+        return {
+          name: item.display_name,
+          lat,
+          lon: canonicalLon,
+          type: item.type,
+          class: item.class,
+        };
+      });
       
       setFeatures(locations);
     } catch (err) {
       console.error("Error searching Earth locations:", err);
     }
-  }
+  }, []);
 
-  async function loadMercuryGazetteer() {
+  const loadMercuryGazetteer = useCallback(async () => {
     const mercuryKmz = "https://asc-planetarynames-data.s3.us-west-2.amazonaws.com/MERCURY_nomenclature_center_pts.kmz";
     const pts = await fetchGazetteerKMZ(mercuryKmz);
     setFeatures(pts.slice(0, 500));
-  }
+  }, []);
 
-  async function loadCeresGazetteer() {
+  const loadCeresGazetteer = useCallback(async () => {
     const ceresKmz = "https://asc-planetarynames-data.s3.us-west-2.amazonaws.com/CERES_nomenclature_center_pts.kmz";
     const pts = await fetchGazetteerKMZ(ceresKmz);
     setFeatures(pts.slice(0, 500));
-  }
+  }, []);
 
-  async function loadVestaGazetteer() {
+  const loadVestaGazetteer = useCallback(async () => {
     const vestaKmz = "https://asc-planetarynames-data.s3.us-west-2.amazonaws.com/VESTA_nomenclature_center_pts.kmz";
     const pts = await fetchGazetteerKMZ(vestaKmz);
     setFeatures(pts.slice(0, 500));
-  }
+  }, []);
 
   // ---------- overlays / helpers ----------
   function addCenterCrosshair(viewer: any) {
@@ -1123,92 +1332,269 @@ export default function TileViewer({
     }
   }
 
-  // Utility: pan/zoom viewer to lon/lat for NASA Trek tiles
-  function panToLonLat(lon: number, lat: number, zoomLevel = 4) {
-    const v = viewerObjRef.current;
-    if (!v) return;
+  // Utility: pan/zoom viewer to lon/lat using configured projection metadata
+  const panToLonLat = useCallback((lon: number, lat: number, zoomLevel = 4) => {
+    const viewer = viewerObjRef.current;
+    if (!viewer) return;
 
-    // Normalize lon from -180..180 to 0..360 used by Trek tile images
-    lon = ((lon % 360) + 360) % 360;
-    lat = Math.max(-90, Math.min(90, lat));
-
-    // get image dimensions from the first world item
-    let sourceItem;
-    try {
-      sourceItem = v.world.getItemAt(0);
-    } catch (err) {
-      console.error("No world item in viewer", err);
-      return;
-    }
-    if (!sourceItem || !sourceItem.source) {
-      console.error("No source info");
-      return;
-    }
-    const imgW = sourceItem.source.width;
-    const imgH = sourceItem.source.height;
-    if (!imgW || !imgH) {
-      console.error("Invalid source dimensions", imgW, imgH);
+    const dims = getPrimaryImageDimensions(viewer);
+    if (!dims) {
+      console.warn("Cannot determine image dimensions for viewer");
       return;
     }
 
-    // convert lon/lat -> image pixels
-    let x: number;
-    let y: number;
-    
-    // Check if this is an Earth dataset (Web Mercator projection)
-    if (selectedBody === "earth") {
-      // Web Mercator projection (EPSG:3857)
-      // Convert longitude to X (simple linear conversion)
-      x = ((lon + 180) / 360) * imgW;
-      
-      // Convert latitude to Y using Web Mercator formula
-      const latRad = (lat * Math.PI) / 180;
-      const mercatorY = Math.log(Math.tan(Math.PI / 4 + latRad / 2));
-      // Normalize from [-π, π] to [0, 1] and flip Y coordinate
-      y = ((Math.PI - mercatorY) / (2 * Math.PI)) * imgH;
-    } else {
-      // For other planetary bodies, use simple equirectangular projection
-      x = ((lon + 180) / 360) * imgW;
-      y = ((90 - lat) / 180) * imgH;
+    const sourceConvention: LonConvention =
+      lonConventionMode === "native"
+        ? bodyProjection.nativeLonConvention
+        : "EAST_180";
+
+    const correction = getAlignmentCorrectionForLayer(
+      selectedLayerId,
+      selectedBody,
+      mergedCorrections
+    );
+
+    const imagePoint = lonLatToImagePoint(lon, lat, selectedBody, dims, {
+      sourceConvention,
+      correction,
+    });
+
+    const viewportPoint = viewer.viewport.imageToViewportCoordinates(
+      imagePoint.x,
+      imagePoint.y
+    );
+
+    if (markerElementRef.current) {
+      try {
+        viewer.removeOverlay(markerElementRef.current);
+      } catch {
+        // ignore cleanup errors
+      }
+      markerElementRef.current.remove();
+      markerElementRef.current = null;
     }
 
-    // create marker element
     const marker = document.createElement("div");
-    marker.className = "feature-marker";
-    marker.style.cssText = `
-      width: 22px; height:22px; border:3px solid rgba(255,80,80,0.95);
-      border-radius:50%; background: rgba(255, 80, 80, 0.25);
-      transform: translate(-50%, -50%); pointer-events: auto;
+    marker.className = "feature-marker feature-marker--pulse";
+    marker.innerHTML = `
+      <div class="feature-marker__ring"></div>
+      <div class="feature-marker__core"></div>
     `;
+    marker.style.pointerEvents = "none";
 
-    // remove old markers and overlays
-    document.querySelectorAll(".feature-marker").forEach((el) => el.remove());
-    // Clear existing overlays from viewer
     try {
-      v.clearOverlays();
-    } catch (err) {
-      console.warn("Could not clear overlays:", err);
-    }
-
-    // add overlay
-    try {
-      v.addOverlay({
+      viewer.addOverlay({
         element: marker,
-        location: v.viewport.imageToViewportCoordinates(x, y),
+        location: viewportPoint,
         placement: "CENTER",
         checkResize: false,
       });
+      markerElementRef.current = marker;
     } catch (err) {
       console.error("Error adding overlay:", err);
     }
 
-    // pan+zoom
-    const viewportPoint = v.viewport.imageToViewportCoordinates(x, y);
-    v.viewport.panTo(viewportPoint, true);
+    viewer.viewport.panTo(viewportPoint, true);
     setTimeout(() => {
-      v.viewport.zoomTo(zoomLevel, viewportPoint, true);
+      viewer.viewport.zoomTo(zoomLevel, viewportPoint, true);
     }, 120);
+  }, [bodyProjection, lonConventionMode, mergedCorrections, selectedBody, selectedLayerId, getPrimaryImageDimensions]);
+
+  function clearReferenceOverlays(targetViewer?: any) {
+    const viewer = targetViewer ?? viewerObjRef.current;
+    if (!viewer) return;
+
+    referenceOverlayElementsRef.current.forEach((el) => {
+      try {
+        viewer.removeOverlay(el);
+      } catch {
+        // ignore removal errors
+      }
+      el.remove();
+    });
+    referenceOverlayElementsRef.current = [];
   }
+
+  const createGridOverlay = useCallback((viewer: any): { update: () => void; dispose: () => void } | null => {
+    if (!viewer?.container) return null;
+
+    const canvas = document.createElement("canvas");
+    canvas.className = "projection-grid-overlay";
+    canvas.style.position = "absolute";
+    canvas.style.top = "0";
+    canvas.style.left = "0";
+    canvas.style.width = "100%";
+    canvas.style.height = "100%";
+    canvas.style.pointerEvents = "none";
+    canvas.style.zIndex = "30";
+    canvas.style.mixBlendMode = "screen";
+    viewer.container.appendChild(canvas);
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      canvas.remove();
+      return null;
+    }
+
+    const update = () => {
+      const container = viewer.container as HTMLElement;
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+      const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+      const targetWidth = Math.max(1, Math.round(width * dpr));
+      const targetHeight = Math.max(1, Math.round(height * dpr));
+
+      if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+      }
+
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (!showGridRef.current) {
+        ctx.restore();
+        return;
+      }
+
+      const dims = getPrimaryImageDimensions(viewer);
+      if (!dims) {
+        ctx.restore();
+        return;
+      }
+
+      ctx.scale(dpr, dpr);
+
+      const bodyKey = selectedBodyRef.current;
+      const correction = getCurrentAlignmentCorrection();
+      const viewport = viewer.viewport;
+      const widthPx = width;
+      const heightPx = height;
+      const tolerance = 40;
+
+      const projectPoint = (lon: number, lat: number) => {
+        const imagePoint = lonLatToImagePoint(lon, lat, bodyKey, dims, {
+          sourceConvention: "EAST_180",
+          correction,
+        });
+        const viewportPoint = viewport.imageToViewportCoordinates(
+          imagePoint.x,
+          imagePoint.y
+        );
+        return viewport.viewportToViewerElementCoordinates(viewportPoint);
+      };
+
+      for (let lon = -180; lon <= 180; lon += 1) {
+        const top = projectPoint(lon, 90);
+        const bottom = projectPoint(lon, -90);
+        if (
+          (top.x < -tolerance && bottom.x < -tolerance) ||
+          (top.x > widthPx + tolerance && bottom.x > widthPx + tolerance)
+        ) {
+          continue;
+        }
+        const isPrime = Math.abs(lon) < 0.001;
+        ctx.strokeStyle = isPrime ? "rgba(0, 255, 200, 0.75)" : "rgba(0, 255, 255, 0.35)";
+        ctx.lineWidth = isPrime ? 1.6 : 1;
+        ctx.beginPath();
+        ctx.moveTo(top.x, top.y);
+        ctx.lineTo(bottom.x, bottom.y);
+        ctx.stroke();
+      }
+
+      for (let lat = -90; lat <= 90; lat += 1) {
+        const left = projectPoint(-180, lat);
+        const right = projectPoint(180, lat);
+        if (
+          (left.y < -tolerance && right.y < -tolerance) ||
+          (left.y > heightPx + tolerance && right.y > heightPx + tolerance)
+        ) {
+          continue;
+        }
+        const isEquator = Math.abs(lat) < 0.001;
+        ctx.strokeStyle = isEquator ? "rgba(255, 255, 200, 0.75)" : "rgba(255, 255, 255, 0.28)";
+        ctx.lineWidth = isEquator ? 1.6 : 0.8;
+        ctx.beginPath();
+        ctx.moveTo(left.x, left.y);
+        ctx.lineTo(right.x, right.y);
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    };
+
+    const handler = () => update();
+    viewer.addHandler("animation", handler);
+    viewer.addHandler("open", handler);
+    viewer.addHandler("resize", handler);
+    viewer.addHandler("update-viewport", handler);
+    if (typeof window !== "undefined") {
+      window.addEventListener("resize", handler);
+    }
+
+    return {
+      update,
+      dispose: () => {
+        try {
+          viewer.removeHandler("animation", handler);
+          viewer.removeHandler("open", handler);
+          viewer.removeHandler("resize", handler);
+          viewer.removeHandler("update-viewport", handler);
+        } catch {
+          // ignore handler cleanup errors
+        }
+        if (typeof window !== "undefined") {
+          window.removeEventListener("resize", handler);
+        }
+        canvas.remove();
+      },
+    };
+  }, [getCurrentAlignmentCorrection, getPrimaryImageDimensions]);
+
+  const handleAlignmentDraftChange = (axis: "x" | "y", value: string) => {
+    setAlignmentDraft((prev) => ({ ...prev, [axis]: value }));
+  };
+
+  const handlePersistAlignmentOffset = () => {
+    if (!selectedLayerId) {
+      console.warn("No layer selected to persist alignment offset");
+      return;
+    }
+
+    const xValue = alignmentDraft.x.trim() === "" ? 0 : Number(alignmentDraft.x);
+    const yValue = alignmentDraft.y.trim() === "" ? 0 : Number(alignmentDraft.y);
+
+    if (!Number.isFinite(xValue) || !Number.isFinite(yValue)) {
+      console.warn("Alignment offset must be numeric");
+      return;
+    }
+
+    const next = { ...alignmentOverrides };
+    if (xValue === 0 && yValue === 0) {
+      delete next[selectedLayerId];
+    } else {
+      next[selectedLayerId] = {
+        ...(next[selectedLayerId] ?? {}),
+        pixelOffset: { x: xValue, y: yValue },
+      };
+    }
+
+    setAlignmentOverrides(next);
+    saveStoredCorrections(next);
+  };
+
+  const handleResetAlignmentOffset = () => {
+    if (!selectedLayerId) {
+      console.warn("No layer selected to reset alignment offset");
+      return;
+    }
+
+    const next = { ...alignmentOverrides };
+    delete next[selectedLayerId];
+    setAlignmentOverrides(next);
+    saveStoredCorrections(next);
+  };
 
   // filtered features by search text
   const filteredFeatures = features.filter((f) => {
@@ -1220,7 +1606,7 @@ export default function TileViewer({
   return (
     <div style={{ display: "flex", gap: 12 }}>
       <div style={{ flex: 1 }}>
-        <div style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <label>
             Body:
             <select value={selectedBody} onChange={(e) => {
@@ -1337,7 +1723,133 @@ export default function TileViewer({
           {selectedBody === "mercury" && <button onClick={loadMercuryGazetteer}>Load Mercury Features</button>}
           {selectedBody === "ceres" && <button onClick={loadCeresGazetteer}>Load Ceres Features</button>}
           {selectedBody === "vesta" && <button onClick={loadVestaGazetteer}>Load Vesta Features</button>}
+          <button
+            type="button"
+            onClick={() => setShowDebugTools((value) => !value)}
+            style={{
+              marginLeft: "auto",
+              padding: "6px 12px",
+              borderRadius: 6,
+              border: "1px solid rgba(148, 163, 184, 0.35)",
+              background: showDebugTools ? "#1f2937" : "#0f172a",
+              color: "#e2e8f0",
+              cursor: "pointer",
+              transition: "background 0.2s ease",
+            }}
+          >
+            {showDebugTools ? "Hide Debug" : "Projection Debug"}
+          </button>
         </div>
+
+        {showDebugTools && (
+          <div
+            style={{
+              marginBottom: 12,
+              padding: 12,
+              borderRadius: 12,
+              background: "#0f172a",
+              border: "1px solid rgba(148, 163, 184, 0.25)",
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 12,
+              color: "#e2e8f0",
+            }}
+          >
+            <label style={{ display: "flex", flexDirection: "column", fontSize: 12 }}>
+              <span style={{ marginBottom: 4, fontWeight: 600 }}>Longitude domain</span>
+              <select
+                value={lonConventionMode}
+                onChange={(e) => setLonConventionMode(e.target.value as "canonical" | "native")}
+                style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid rgba(148,163,184,0.35)", background: "#020617", color: "#e2e8f0" }}
+              >
+                <option value="canonical">East ±180° (canonical)</option>
+                <option value="native">Native ({bodyProjection.nativeLonConvention === "EAST_360" ? "0–360°E" : "±180°E"})</option>
+              </select>
+            </label>
+
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <input
+                type="checkbox"
+                checked={showGrid}
+                onChange={(e) => setShowGrid(e.target.checked)}
+              />
+              1° grid overlay
+            </label>
+
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <input
+                type="checkbox"
+                checked={showReferenceFeatures}
+                onChange={(e) => setShowReferenceFeatures(e.target.checked)}
+              />
+              Known feature markers
+            </label>
+
+            <div style={{ flexBasis: "100%", fontSize: 12, color: "#cbd5f5", display: "grid", gap: 4 }}>
+              <div><strong>Body:</strong> {bodyProjection.displayName} • Radius {bodyProjection.radiusKm.toLocaleString(undefined, { maximumFractionDigits: 1 })} km</div>
+              <div><strong>Native longitude:</strong> {bodyProjection.nativeLonConvention === "EAST_360" ? "0–360° east-positive" : "±180° east-positive"}</div>
+              {bodyProjection.notes && <div><strong>Projection:</strong> {bodyProjection.notes}</div>}
+            </div>
+
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, alignItems: "center" }}>
+              <label style={{ display: "flex", flexDirection: "column" }}>
+                <span style={{ marginBottom: 2 }}>Static offset X (px)</span>
+                <input
+                  type="number"
+                  value={alignmentDraft.x}
+                  onChange={(e) => handleAlignmentDraftChange("x", e.target.value)}
+                  style={{ width: 90, padding: "4px 6px", borderRadius: 6, border: "1px solid rgba(148,163,184,0.35)", background: "#020617", color: "#e2e8f0" }}
+                />
+              </label>
+              <label style={{ display: "flex", flexDirection: "column" }}>
+                <span style={{ marginBottom: 2 }}>Static offset Y (px)</span>
+                <input
+                  type="number"
+                  value={alignmentDraft.y}
+                  onChange={(e) => handleAlignmentDraftChange("y", e.target.value)}
+                  style={{ width: 90, padding: "4px 6px", borderRadius: 6, border: "1px solid rgba(148,163,184,0.35)", background: "#020617", color: "#e2e8f0" }}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={handlePersistAlignmentOffset}
+                disabled={!selectedLayerId}
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: 6,
+                  border: "1px solid rgba(94, 234, 212, 0.6)",
+                  background: selectedLayerId ? "rgba(45, 212, 191, 0.15)" : "rgba(45, 212, 191, 0.05)",
+                  color: "#5eead4",
+                  cursor: selectedLayerId ? "pointer" : "not-allowed",
+                }}
+              >
+                Save offset
+              </button>
+              <button
+                type="button"
+                onClick={handleResetAlignmentOffset}
+                disabled={!selectedLayerId}
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: 6,
+                  border: "1px solid rgba(248, 113, 113, 0.45)",
+                  background: selectedLayerId ? "rgba(248, 113, 113, 0.12)" : "rgba(248, 113, 113, 0.05)",
+                  color: "#fca5a5",
+                  cursor: selectedLayerId ? "pointer" : "not-allowed",
+                }}
+              >
+                Reset
+              </button>
+            </div>
+
+            <div style={{ flexBasis: "100%", fontSize: 12, color: "#a5b4fc" }}>
+              <strong>Current offset:</strong>{" "}
+              {activeCorrection?.pixelOffset
+                ? `${activeCorrection.pixelOffset.x.toFixed(2)}, ${activeCorrection.pixelOffset.y.toFixed(2)} px`
+                : "0.00, 0.00 px"}
+            </div>
+          </div>
+        )}
 
         <div style={{ width: "100%", height: "640px", position: "relative" }}>
           {!isClient ? (
@@ -1405,7 +1917,11 @@ export default function TileViewer({
               <li key={i} style={{ marginBottom: 8 }}>
                 <button style={{ width: "100%", textAlign: "left" }} onClick={() => panToLonLat(f.lon, f.lat, 6)}>
                   <strong>{f.name}</strong>
-                  <div style={{ fontSize: 12 }}>{f.lat.toFixed(4)}, {f.lon.toFixed(4)} {f.diamkm ? `• ${f.diamkm} km` : ""}</div>
+                  <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                    {formatLatitude(f.lat)} • {formatLongitude(f.lon, { convention: displayLonConvention, decimals: 2 })}
+                    {f.diamkm ? ` • ${f.diamkm.toFixed(1)} km` : ""}
+                    {f.type ? ` • ${f.type}` : ""}
+                  </div>
                 </button>
               </li>
             ))}
